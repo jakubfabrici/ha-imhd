@@ -12,9 +12,11 @@
 # The `departures` attribute is a list of dicts with these keys:
 #   line, destination, destination_city, departure, scheduled, time,
 #   scheduled_time, minutes, leave_in, delay, realtime, platform, vehicle,
-#   low_floor, air_conditioning, stuck, text, trip_id
-# `minutes` is recomputed by the integration every 30 seconds, so templates
-# that read it stay current without any time-based trigger.
+#   low_floor, air_conditioning, stuck, text, trip_id, platform_id, terminal,
+#   previous_stop, stops_away, vehicle_type
+# (see the README for types and null cases). `minutes`, `leave_in` and `text`
+# are recomputed by the integration every 30 seconds, so templates that read
+# them stay current without any time-based trigger.
 
 - sensor:
     # "Line 44 to Koliba at 08:02 (in 4 min)" - a one-line summary.
@@ -82,7 +84,7 @@
         {% set d = deps | selectattr('low_floor', 'eq', true) | first %}
         {{ d.line ~ ' at ' ~ d.time if d is defined else 'none known' }}
 
-    # Compact board for small displays: "44 4' · 42 6' · 47 10'"
+    # Compact board for small displays: "44 4' · 42 5' · 47 10' · 44 13'"
     - name: "Hodzovo compact board"
       unique_id: hodzovo_compact_board
       icon: mdi:bus-stop

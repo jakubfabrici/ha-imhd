@@ -31,6 +31,23 @@ jobs:
       - name: Run tests
         run: pytest tests -q
 
+  compat:
+    # The oldest supported Home Assistant (hacs.json: 2025.2.0) runs on
+    # Python 3.13: the integration must not use newer syntax.
+    name: Python 3.13 syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Byte-compile the integration
+        run: python -m compileall -q custom_components/imhd
+
   ruff:
     name: Ruff
     runs-on: ubuntu-latest

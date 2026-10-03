@@ -75,7 +75,7 @@
           "platforms": "Zobrazovať iba odchody z týchto nástupíšť. Nechajte prázdne pre všetky nástupištia.",
           "lines": "Zobrazovať iba tieto linky (presná zhoda, bez ohľadu na veľkosť písmen). Nechajte prázdne pre všetky linky.",
           "exclude_lines": "Tieto linky nikdy nezobrazovať.",
-          "direction": "Zobrazovať iba odchody, ktorých cieľová zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
+          "direction": "Zobrazovať iba odchody, ktorých cieľ alebo konečná zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
           "max_departures": "Koľko odchodov obsahuje hlavný senzor (1 – 30).",
           "walking_time": "Počet minút, ktoré potrebujete na cestu na zastávku. Spoje, ktoré už nestihnete, sa skryjú.",
           "time_to_leave_window": "Senzor Čas vyraziť sa zapne toľko minút pred tým, ako musíte vyraziť.",
@@ -86,7 +86,7 @@
     "error": {
       "cannot_connect": "Nepodarilo sa pripojiť k imhd.sk.",
       "stop_not_found": "Zastávka sa na imhd.sk nenašla.",
-      "invalid_stop": "Zadajte číselné ID zastávky alebo odkaz imhd.sk obsahujúci `st=`.",
+      "invalid_stop": "Zadajte číselné ID zastávky alebo odkaz imhd.sk (odkaz na zastávkovú tabuľu s `st=` alebo stránku zastávky `/zastavka/`).",
       "no_stops_found": "Nenašli sa žiadne zastávky.",
       "unknown": "Neočakávaná chyba."
     },
@@ -117,7 +117,7 @@
           "platforms": "Zobrazovať iba odchody z týchto nástupíšť. Nechajte prázdne pre všetky nástupištia.",
           "lines": "Zobrazovať iba tieto linky (presná zhoda, bez ohľadu na veľkosť písmen). Nechajte prázdne pre všetky linky.",
           "exclude_lines": "Tieto linky nikdy nezobrazovať.",
-          "direction": "Zobrazovať iba odchody, ktorých cieľová zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
+          "direction": "Zobrazovať iba odchody, ktorých cieľ alebo konečná zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
           "max_departures": "Koľko odchodov obsahuje hlavný senzor (1 – 30).",
           "walking_time": "Počet minút, ktoré potrebujete na cestu na zastávku. Spoje, ktoré už nestihnete, sa skryjú.",
           "time_to_leave_window": "Senzor Čas vyraziť sa zapne toľko minút pred tým, ako musíte vyraziť.",
@@ -225,7 +225,7 @@
         },
         "direction": {
           "name": "Smer",
-          "description": "Iba ciele obsahujúce tento text."
+          "description": "Iba odchody, ktorých cieľ alebo konečná zastávka obsahuje tento text."
         },
         "limit": {
           "name": "Limit",

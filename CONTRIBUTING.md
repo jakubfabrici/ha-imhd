@@ -11,14 +11,23 @@ examples and translations are all welcome.
   use the captured payloads in `tests/fixtures/`.
 * **No private data** in code, fixtures, screenshots or examples: no tokens,
   hostnames, IP addresses, home coordinates or your personal stop. Use the
-  public example stops (Bratislava *Hodžovo nám.* 83, Košice
-  *Nám. osloboditeľov* 1130, Žilina *Hurbanova* 1831).
+  public example stops: Bratislava *Hodžovo nám.* 83 (platforms A–D),
+  Košice *Nám. osloboditeľov* 1130 and Žilina *Hurbanova* 1831 (both with
+  unlabeled platforms).
+* **Respect imhd.sk's terms.** imhd.sk data may be used for personal purposes
+  only. Don't add features meant to republish or redistribute it.
 * Keep user-facing texts in `strings.json` and in **both** translations
   (`translations/en.json`, `translations/sk.json`).
+* **Stay compatible with the oldest supported Home Assistant**, which is
+  `homeassistant` in `hacs.json` (2025.2.0, running on Python 3.13). Don't use
+  Python 3.14-only syntax such as `except A, B:` without parentheses. CI
+  byte-compiles the integration with Python 3.13.
 
 ## Development setup
 
-You need Python 3.14 (the version current Home Assistant requires) and git.
+You need Python 3.14 (the version the Home Assistant release pinned for the
+tests requires) and git. The integration itself must also run on Python 3.13,
+see the ground rules above.
 [uv](https://docs.astral.sh/uv/) is the quickest way:
 
 ```bash
@@ -49,7 +58,8 @@ ruff check .             # lint (configuration in pyproject.toml)
 ruff format .            # optional: format the code
 ```
 
-CI runs the same commands (`.github/workflows/tests.yml`) plus
+CI runs the same commands plus a Python 3.13 byte-compile check
+(`.github/workflows/tests.yml`), and
 [hassfest](https://developers.home-assistant.io/blog/2020/04/16/hassfest/) and the
 HACS validation (`.github/workflows/validate.yml`).
 
@@ -97,8 +107,10 @@ imhd.sk calls a city a *section*; it is the first part of the URL, e.g.
 * One topic per pull request; describe what and why.
 * Update `CHANGELOG.md` under **Unreleased**.
 * Update README / examples when you change options, entities, attributes or
-  actions - the templating examples rely on attribute names, so treat them as
-  a public API.
+  actions. Users' templates rely on entity ids (`<domain>.<name>_<key>`),
+  attribute names and departure fields, so treat them as a public API. The
+  documented template outputs are rendered from the example board in the
+  README; keep them in sync.
 * Make sure `pytest tests -q` and `ruff check .` pass.
 
 ## Releases (maintainer)

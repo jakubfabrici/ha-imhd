@@ -10,8 +10,16 @@
 # stop, edit this file and restart Home Assistant.
 #
 # Only `city` and `stop` are required. Everything else has a sensible default.
-# The entity ids are derived from `name`, e.g. name "Hodzovo" gives
-# sensor.hodzovo_departures, binary_sensor.hodzovo_time_to_leave, ...
+# The entity ids are derived from `name` (not from the HA language), e.g. name
+# "Hodzovo" gives sensor.hodzovo_departures, binary_sensor.hodzovo_time_to_leave,
+# ... A stop is identified by city + stop + name: changing the name creates a
+# new entry with new entity ids.
+#
+# `stop` accepts a stop id (83), an imhd.sk link (?st=83 board link or a
+# /zastavka/... stop page) or the exact stop name ("Hodžovo nám.").
+#
+# Personal use only (imhd.sk terms) - configure only the stops you need; every
+# stop keeps one connection to imhd.sk open.
 
 # --- Bratislava: Hodzovo namestie (stop 83) ---------------------------------
 # A central trolleybus/bus hub. We only care about platforms A and B and we
@@ -19,7 +27,9 @@
 - name: Hodzovo
   city: ba                      # section code (see README) or city name
   stop: 83                      # https://imhd.sk/ba/online-zastavkova-tabula?st=83
+                                # (stop: "Hodžovo nám." would work too)
   platforms: ["A", "B"]         # platform labels (or ids); default: all platforms
+  exclude_lines: ["►"]          # hide unnumbered service trips (depot runs)
   walking_time: 3               # departures you can no longer catch are hidden
   time_to_leave_window: 2       # binary_sensor.hodzovo_time_to_leave is on 3-5 min before departure
   max_departures: 10            # 1..30, length of the `departures` attribute
@@ -27,11 +37,13 @@
 
 # --- Kosice: Namestie osloboditelov (stop 1130) -----------------------------
 # Only trams 1 and 3 heading to Vazecka. Lines are strings - quote them.
+# imhd.sk has no platform labels here (platforms are ids 2474..2483) and shows
+# timetable departures (realtime: false, text "~5 min").
 - name: Namestie osloboditelov
   city: ke
   stop: 1130
   lines: ["1", "3"]             # whitelist; default: all lines
-  direction: "Važecká"          # keep departures whose destination contains this text
+  direction: "Važecká"          # headsign or terminal stop must contain this text
   walking_time: 6
   departure_sensors: 2
 

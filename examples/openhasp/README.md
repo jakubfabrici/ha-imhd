@@ -5,7 +5,10 @@ touch plate (320×480 portrait, e.g. a WT32-SC01 or any other 3.5" plate).
 No pyscript, no add-on: a single Home Assistant automation reads
 `sensor.<stop>_departures` and pushes the texts and colours over MQTT.
 
-![openHASP plate showing departures](../../docs/images/openhasp.png)
+![Simulated preview of the openHASP departure board](../../docs/images/openhasp.png)
+
+*Simulated preview of `pages.jsonl` filled with example data. It is not a
+photo of a real plate, so fonts and colours on your device may differ slightly.*
 
 | File | What it is |
 |---|---|

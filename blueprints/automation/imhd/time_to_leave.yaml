@@ -8,9 +8,10 @@ blueprint:
 
 
     The message can use these variables: `line`, `destination`, `departure`
-    (ISO timestamp), `departure_time` (HH:MM), `leave_in` (minutes until you
-    have to leave), `minutes` (minutes until the departure) and `stop` (the
-    stop / device name).
+    (ISO timestamp), `departure_time` (HH:MM, rounded to the nearest minute
+    like the integration's `time`), `leave_in` (minutes until you have to
+    leave), `minutes` (whole minutes until the departure, rounded down) and
+    `stop` (the stop / device name).
 
 
     Tip: the sensor follows the *next* departure the stop's filters allow. If
@@ -20,7 +21,7 @@ blueprint:
   author: jakubfabrici
   source_url: https://github.com/jakubfabrici/ha-imhd/blob/main/blueprints/automation/imhd/time_to_leave.yaml
   homeassistant:
-    min_version: 2025.1.0
+    min_version: 2025.2.0
   input:
     departure_section:
       name: Departure
@@ -163,11 +164,11 @@ variables:
   destination: "{{ state_attr(leave_sensor, 'destination') or '' }}"
   departure: "{{ state_attr(leave_sensor, 'departure') or '' }}"
   departure_time: >-
-    {{ as_timestamp(departure, 0) | timestamp_custom('%H:%M') if departure else '' }}
+    {{ (as_timestamp(departure, 0) + 30) | timestamp_custom('%H:%M') if departure else '' }}
   leave_in: "{{ state_attr(leave_sensor, 'leave_in') | int(0) }}"
   minutes: >-
-    {{ ((as_timestamp(departure, 0) - as_timestamp(now())) / 60) | round(0, 'ceil') | int
-       if departure else 0 }}
+    {{ [((as_timestamp(departure, 0) - as_timestamp(now())) / 60) | round(0, 'floor') | int, 0]
+       | max if departure else 0 }}
   stop: >-
     {{ device_attr(device_id(leave_sensor), 'name_by_user')
        or device_attr(device_id(leave_sensor), 'name') or 'the stop' }}

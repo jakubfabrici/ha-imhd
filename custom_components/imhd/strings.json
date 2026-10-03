@@ -75,7 +75,7 @@
           "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
           "lines": "Only show these lines (exact match, case-insensitive). Leave empty for all lines.",
           "exclude_lines": "Never show these lines.",
-          "direction": "Only show departures whose destination contains one of these texts (case and diacritics are ignored).",
+          "direction": "Only show departures whose destination or terminal stop contains one of these texts (case and diacritics are ignored).",
           "max_departures": "How many departures the main sensor lists (1-30).",
           "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
           "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
@@ -86,7 +86,7 @@
     "error": {
       "cannot_connect": "Failed to connect to imhd.sk.",
       "stop_not_found": "The stop was not found on imhd.sk.",
-      "invalid_stop": "Enter a numeric stop ID or an imhd.sk URL containing `st=`.",
+      "invalid_stop": "Enter a numeric stop ID or an imhd.sk link (a departure board link with `st=` or a `/zastavka/` stop page).",
       "no_stops_found": "No stops were found.",
       "unknown": "Unexpected error."
     },
@@ -117,7 +117,7 @@
           "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
           "lines": "Only show these lines (exact match, case-insensitive). Leave empty for all lines.",
           "exclude_lines": "Never show these lines.",
-          "direction": "Only show departures whose destination contains one of these texts (case and diacritics are ignored).",
+          "direction": "Only show departures whose destination or terminal stop contains one of these texts (case and diacritics are ignored).",
           "max_departures": "How many departures the main sensor lists (1-30).",
           "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
           "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
@@ -225,7 +225,7 @@
         },
         "direction": {
           "name": "Direction",
-          "description": "Only destinations containing this text."
+          "description": "Only departures whose destination or terminal stop contains this text."
         },
         "limit": {
           "name": "Limit",

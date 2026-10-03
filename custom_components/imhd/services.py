@@ -161,7 +161,9 @@ def _departures_response(coordinator: ImhdCoordinator, call: ServiceCall) -> dic
         dep
         for dep in data.matching
         if (not lines or dep.line.casefold() in lines)
-        and (not direction or direction in normalize_text(dep.destination))
+        and (
+            not direction or direction in normalize_text(f"{dep.destination}\n{dep.terminal or ''}")
+        )
         and dep.minutes >= min_minutes
     ]
     return {

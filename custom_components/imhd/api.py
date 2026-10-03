@@ -118,7 +118,7 @@ def _decode_stop_token(token: str) -> int | None:
     try:
         raw = bytes((byte - 0x4F) & 0xFF for byte in bytes.fromhex(token))
         value = json.loads(raw.decode())
-    except ValueError, UnicodeDecodeError:
+    except (ValueError, UnicodeDecodeError):
         return None
     stop_id = str(value.get("g", "")) if isinstance(value, dict) else ""
     return int(stop_id) if stop_id.isdigit() else None
@@ -164,7 +164,7 @@ def parse_nearest(payload: Any, section: str, latitude: float, longitude: float)
         try:
             lat, lon = float(item["lat"]), float(item["lng"])
             stop_id = int(item["id"])
-        except KeyError, TypeError, ValueError:
+        except (KeyError, TypeError, ValueError):
             continue
         labels = item.get("platform_labels") or {}
         stops.append(

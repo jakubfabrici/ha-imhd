@@ -202,7 +202,7 @@ def clock_time(when: datetime) -> str:
 
 
 def natural_key(text: str) -> tuple[Any, ...]:
-    """Sort key ordering embedded numbers numerically ("9" < "X13" < "N21")."""
+    """Sort key ordering embedded numbers numerically ("9" < "N21" < "X13")."""
     digits = "".join(ch for ch in text if ch.isdigit())
     prefix = "".join(ch for ch in text if not ch.isdigit())
     return (prefix.casefold(), int(digits) if digits else -1, text)

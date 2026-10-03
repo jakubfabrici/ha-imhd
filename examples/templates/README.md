@@ -24,49 +24,55 @@ Ready-made template entities are in [`template_sensors.yaml`](template_sensors.y
 
 ## The data you work with
 
-The main sensor's state is the number of minutes until the next departure
-(`unknown` when there is none). Its attributes hold everything else:
+The main sensor's state is the number of whole minutes until the next departure
+(`unknown` when there is none). Its attributes hold everything else (full
+reference: [README → The main sensor and its attributes](../../README.md#the-main-sensor-and-its-attributes)):
 
 | Attribute | Example |
 |---|---|
 | `stop_name`, `stop_id`, `city`, `section` | `Hodžovo nám.`, `83`, `Bratislava`, `ba` |
-| `next_line`, `next_destination`, `next_time`, `next_minutes`, `next_delay`, `next_realtime`, `next_platform`, `next_departure` | `44`, `Koliba`, `08:02`, `4`, `1`, `true`, `A`, `2026-10-05T08:02:00+02:00` |
+| `next_line`, `next_destination`, `next_time`, `next_minutes`, `next_delay`, `next_realtime`, `next_platform`, `next_departure` | `44`, `Koliba`, `08:02`, `4`, `1`, `true`, `A`, `2026-10-05T08:02:10+02:00` |
 | `lines`, `departure_count`, `info`, `connected`, `last_update`, `platforms` | `["42", "44", "47"]`, `6`, `[]`, `true`, … |
 | `departures` | list of departures, see below |
 
 Each item of `departures` is a dict:
 
 ```yaml
-line: "44"                 # always a string
-destination: Koliba
+line: "44"                 # always a string; "►" = unnumbered service trip
+destination: Koliba        # headsign, may contain a via stop: "Hrad ► Červený most"
 destination_city: Bratislava
-departure: "2026-10-05T08:02:00+02:00"   # expected, ISO 8601
-scheduled: "2026-10-05T08:01:00+02:00"   # timetable
-time: "08:02"              # expected, local HH:MM
+departure: "2026-10-05T08:02:10+02:00"   # expected, ISO 8601, to the second
+scheduled: "2026-10-05T08:00:45+02:00"   # timetable
+time: "08:02"              # expected, local HH:MM, rounded to the nearest minute
 scheduled_time: "08:01"
-minutes: 4                 # until departure, >= 0
+minutes: 4                 # whole minutes until departure (rounded down), >= 0
 leave_in: 1                # minutes - walking_time
-delay: 1                   # minutes, null when timetable-only
-realtime: true
-platform: A
-vehicle: "6127"            # or null
-low_floor: false           # true / false / null (unknown)
-air_conditioning: false
+delay: 1                   # minutes (+ late, - early); null when not vehicle-tracked
+realtime: true             # false = timetable only
+platform: A                # label, or the platform id where imhd.sk has no labels
+vehicle: "6127"            # null when not vehicle-tracked
+low_floor: true            # true / false / null (unknown)
+air_conditioning: true
 stuck: false
-text: 4 min                # what imhd.sk displays
-trip_id: 18185607
+text: 4 min                # board text: "*", "<1 min", "4 min", "22:15"; "~" prefix = timetable only
+trip_id: -18185607
+platform_id: "213"
+terminal: Koliba           # terminal stop of the trip
+previous_stop: Kozia       # stop the vehicle passed last, or null
+stops_away: 1              # stops between the vehicle and your stop, or null
+vehicle_type: SOR TNS 12   # vehicle model, or null
 ```
 
-The outputs below are for this board (it is 07:58):
+The outputs below are for this board (it is 07:58, walking time 3 minutes):
 
-| # | Line | Destination | Platform | Scheduled | Expected | Minutes | `leave_in` | Delay | Realtime | Low floor |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | 44 | Koliba | A | 08:01 | 08:02 | 4 | 1 | 1 | yes | no |
-| 1 | 42 | Cintorín Vrakuňa | A | 08:04 | 08:04 | 6 | 3 | 0 | yes | yes |
-| 2 | 47 | Zimný štadión | B | 08:05 | 08:08 | 10 | 7 | 3 | yes | yes |
-| 3 | 44 | Koliba | A | 08:11 | 08:11 | 13 | 10 | – | no | – |
-| 4 | 42 | Cintorín Vrakuňa | A | 08:19 | 08:19 | 21 | 18 | 0 | yes | yes |
-| 5 | 44 | Koliba | A | 08:23 | 08:23 | 25 | 22 | – | no | – |
+| # | Line | Destination | Platform | Scheduled | Expected | Minutes | `leave_in` | Delay | Realtime | Vehicle | Low floor | A/C | `text` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | 44 | Koliba | A | 08:01 | 08:02 | 4 | 1 | 1 | yes | 6127, 1 stop away (Kozia) | yes | yes | `4 min` |
+| 1 | 42 | Cintorín Vrakuňa | A | 08:04 | 08:04 | 5 | 2 | 0 | yes | 6813, 2 stops away (Sokolská) | yes | yes | `5 min` |
+| 2 | 47 | Hrad ► Červený most | B | 08:05 | 08:08 | 10 | 7 | 3 | yes | 6101, 1 stop away (Kollárovo nám.) | yes | no | `10 min` |
+| 3 | 44 | Koliba | A | 08:11 | 08:11 | 13 | 10 | – | no | – | – | – | `~13 min` |
+| 4 | 42 | Cintorín Vrakuňa | A | 08:19 | 08:19 | 20 | 17 | 0 | yes | 6865, not on its way yet | yes | yes | `20 min` |
+| 5 | 44 | Koliba | A | 08:23 | 08:23 | 25 | 22 | – | no | – | – | – | `~25 min` |
 
 ## Rules of thumb
 
@@ -80,8 +86,11 @@ The outputs below are for this board (it is 07:58):
   recomputed by the integration every 30 seconds, so a template that uses them
   re-renders on its own. Use `departure` with `now()` only when you need
   second precision.
-- **`delay` can be `null`.** Timetable-only departures have no delay. Test
-  `d.delay is none` (or use `rejectattr('delay', 'none')`) before comparing.
+- **`delay` can be `null`.** Timetable-only departures have no delay (and no
+  vehicle, `low_floor`, `previous_stop`, …). Test `d.delay is none` (or use
+  `rejectattr('delay', 'none')`) before comparing.
+- **`minutes` is rounded down, `time` to the nearest minute.** Like the imhd.sk
+  board, `4 min` means 4 to 5 minutes. `departure` has the exact time.
 - **Whitespace.** `{%-` and `-%}` remove the whitespace and newlines around a
   tag; use them when the output must be a single line (sensor states are
   limited to 255 characters - put long text into attributes or Markdown cards).
@@ -122,7 +131,7 @@ As a reusable macro for every departure:
 {%- endfor -%}
 ```
 
-Output: `44: 4 min, 42: 6 min, 47: 10 min`
+Output: `44: 4 min, 42: 5 min, 47: 10 min`
 
 ### Exact countdown from the timestamp
 
@@ -142,7 +151,7 @@ fields as attributes - handy where you cannot index lists:
 {{ state_attr('sensor.hodzovo_departure_2', 'line') }} → {{ state_attr('sensor.hodzovo_departure_2', 'destination') }} in {{ states('sensor.hodzovo_departure_2') }} min
 ```
 
-Output: `42 → Cintorín Vrakuňa in 6 min`
+Output: `42 → Cintorín Vrakuňa in 5 min`
 
 ## Filtering departures
 
@@ -216,7 +225,7 @@ Platform B: 47 08:08
 {%- endfor -%}
 ```
 
-Output: `42: 6 min, 44: 4 min, 47: 10 min`
+Output: `42: 5 min, 44: 4 min, 47: 10 min`
 
 ### Number of departures in the next 15 minutes
 
@@ -235,8 +244,9 @@ Output: `4`
 {{ 'Line ' ~ d.line ~ ' at ' ~ d.time if d is defined else 'No low-floor departure known' }}
 ```
 
-Output: `Line 42 at 08:04`. `selectattr('low_floor')` keeps only `true`, so
-unknown (`null`) vehicles are skipped.
+Output: `Line 44 at 08:02`. `selectattr('low_floor')` keeps only `true`, so
+unknown (`null`) vehicles, which include all timetable-only departures, are
+skipped.
 
 ### Delayed departures
 
@@ -255,7 +265,7 @@ Output: `44 +1, 47 +3`
    | map(attribute='destination') | unique | sort | join(', ') }}
 ```
 
-Output: `Cintorín Vrakuňa, Koliba, Zimný štadión`
+Output: `Cintorín Vrakuňa, Hrad ► Červený most, Koliba`
 
 ## Formatting
 
@@ -274,10 +284,10 @@ Output:
 | Line | Destination | Departs | Live |
 |:---:|:---|---:|:---:|
 | **44** | Koliba | 4 min | ● |
-| **42** | Cintorín Vrakuňa | 6 min | ● |
-| **47** | Zimný štadión | 10 min | ● |
+| **42** | Cintorín Vrakuňa | 5 min | ● |
+| **47** | Hrad ► Červený most | 10 min | ● |
 | **44** | Koliba | 13 min |  |
-| **42** | Cintorín Vrakuňa | 21 min | ● |
+| **42** | Cintorín Vrakuňa | 20 min | ● |
 | **44** | Koliba | 25 min |  |
 
 Note the whitespace control: `{%- for … %}` removes the newline *before*
@@ -340,12 +350,16 @@ Output:
 {{ ns.items | join(' · ') if ns.items else '-' }}
 ```
 
-Output: `44 4' · 42 6' · 47 10' · 44 13'`
+Output: `44 4' · 42 5' · 47 10' · 44 13'`
 
 `namespace` is needed because a plain `{% set %}` inside a loop does not survive
 the loop.
 
 ### imhd.sk's own countdown text
+
+`text` is what the imhd.sk board shows: `*` (departing now), `<1 min`,
+`N min` up to 60 minutes, then the clock time. Timetable-only departures get a
+`~` in front (`~13 min`).
 
 ```jinja
 {%- for d in (state_attr('sensor.hodzovo_departures', 'departures') or [])[:3] -%}
@@ -353,7 +367,7 @@ the loop.
 {%- endfor -%}
 ```
 
-Output: `44 4 min · 42 6 min · 47 10 min`
+Output: `44 4 min · 42 5 min · 47 10 min`
 
 ### Vehicles
 
@@ -363,7 +377,32 @@ Output: `44 4 min · 42 6 min · 47 10 min`
 {%- endfor -%}
 ```
 
-Output: `44: #6127, 42: #6813 (AC), 47: #6103 (AC), 42: #6865 (AC)`
+Output: `44: #6127 (AC), 42: #6813 (AC), 47: #6101, 42: #6865 (AC)`
+
+### Where is the vehicle?
+
+`previous_stop` is the stop the vehicle has passed last and `stops_away` how
+many stops it still has to go. Both are `null` until the vehicle is on its way.
+
+```jinja
+{%- set d = (state_attr('sensor.hodzovo_departures', 'departures') or [])
+            | selectattr('previous_stop') | first -%}
+{%- if d is defined -%}
+{{ d.line }} (#{{ d.vehicle }}) is {{ d.stops_away }} stop{{ 's' if d.stops_away != 1 }} away, last seen at {{ d.previous_stop }}.
+{%- else -%} No vehicle on its way.
+{%- endif -%}
+```
+
+Output: `44 (#6127) is 1 stop away, last seen at Kozia.`
+
+### Timetable-only departures
+
+```jinja
+{{ (state_attr('sensor.hodzovo_departures', 'departures') or [])
+   | rejectattr('realtime') | map(attribute='text') | join(', ') }}
+```
+
+Output: `~13 min, ~25 min`
 
 ## Text for people and speakers
 
@@ -420,7 +459,7 @@ The next {{ a.line }} to {{ a.destination }} {{ 'is leaving now' if a.minutes ==
 {%- endif -%}
 ```
 
-Output: `The next 44 to Koliba leaves in 4 minutes, running 1 minute late. After that, the 42 to Cintorín Vrakuňa in 6 minutes.`
+Output: `The next 44 to Koliba leaves in 4 minutes, running 1 minute late. After that, the 42 to Cintorín Vrakuňa in 5 minutes.`
 
 ## Yes/no questions (for conditions and binary sensors)
 
