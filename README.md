@@ -287,6 +287,10 @@ Afterwards you can:
   filters and the entity ids are kept. The platform filter is cleared, because
   platforms belong to a stop.
 
+Stops imported from YAML are managed by the YAML file: **Reconfigure** is not
+available for them, and option changes made in the UI are overwritten by the
+YAML values at the next restart. Edit `imhd.yaml` instead.
+
 ## Finding your stop
 
 Pick whichever of these suits you:
@@ -375,7 +379,7 @@ templates work everywhere.
 | `sensor.hodzovo_delay` | Delay / Meškanie | Delay of the next departure in minutes, or `unknown` when it isn't vehicle-tracked | same as above |
 | `sensor.hodzovo_departure_1` … `_N` | Departure 1 … N / Odchod 1 … N | Minutes until the N-th departure | All [departure fields](#departure-fields) of that departure (none when there is no N-th departure). N = `departure_sensors`. |
 | `binary_sensor.hodzovo_time_to_leave` | Time to leave / Čas vyraziť | `on` while `0 ≤ leave_in ≤ time_to_leave_window` for the next catchable departure | `line`, `destination`, `departure`, `leave_in` |
-| `binary_sensor.hodzovo_realtime_connected` | Realtime connection / Spojenie v reálnom čase | `on` while connected to the imhd.sk feed (*connectivity*, diagnostic) | `last_message`, `reconnects` |
+| `binary_sensor.hodzovo_realtime_connected` | Realtime connection / Spojenie v reálnom čase | `on` while connected to the imhd.sk feed (*connectivity*, diagnostic) | `reconnects` |
 | `binary_sensor.hodzovo_disruption` | Service alert / Mimoriadnosť | `on` while imhd.sk publishes info texts for the stop (*problem*) | `messages` |
 
 ![Device page of a stop](docs/images/device-page.png)
@@ -387,8 +391,8 @@ templates work everywhere.
 - Entities are **unavailable** before the first data arrives, while imhd.sk
   refuses the connection, and after 300 s without a connection. *Realtime
   connection* is always available, because it reports the connection itself.
-- `last_message` is when imhd.sk last sent departures. `reconnects` counts the
-  reconnections since the stop was loaded.
+- `reconnects` counts the reconnections since the stop was loaded. The time of
+  the last message from imhd.sk is in the diagnostics download.
 - Info texts were seen only for Bratislava stops. They appear to be dispatch
   messages of the Bratislava transport company (DPB). A message that imhd.sk
   sends in Slovak and English becomes one message with one language per line.
@@ -505,7 +509,7 @@ friendly_name: Hodzovo Departures
 | `departure_count` | int | Number of items in `departures`. |
 | `info` | list of strings | Current imhd.sk info and service-alert texts. |
 | `connected` | bool | Whether the realtime feed is connected. |
-| `last_update` | ISO timestamp / null | When imhd.sk last sent departures for the stop. |
+| `last_update` | ISO timestamp / null | When the departures or info texts last changed. Identical repeated messages from imhd.sk don't move it. |
 
 `departures` and `info` aren't saved in the recorder (history database), which
 keeps it small. They are always in the current state.
@@ -522,8 +526,8 @@ Each item of `departures` has these keys. So do the attributes of the
 | `destination_city` | string / null | `Bratislava` | Town of the terminal stop. |
 | `departure` | ISO timestamp | `2026-10-05T08:02:10+02:00` | Expected departure, in Home Assistant's time zone, to the second. For vehicle-tracked departures this is imhd.sk's prediction. Otherwise it is the scheduled time. |
 | `scheduled` | ISO timestamp / null | `2026-10-05T08:00:45+02:00` | Scheduled (timetable) departure. |
-| `time` | `HH:MM` | `08:02` | `departure` **rounded to the nearest minute**. |
-| `scheduled_time` | `HH:MM` / null | `08:01` | `scheduled` rounded to the nearest minute. |
+| `time` | `HH:MM` | `08:02` | Expected time as the imhd.sk board shows it (imhd.sk predicts 15 s early, so `departure` + 15 s, cut to the minute). |
+| `scheduled_time` | `HH:MM` / null | `08:01` | `scheduled` cut to the minute, like imhd.sk. |
 | `minutes` | int ≥ 0 | `4` | Whole minutes until `departure`, **rounded down** like on the imhd.sk board. Recomputed every 30 s. |
 | `leave_in` | int | `1` | `minutes - walking_time`: minutes until you have to leave. Departures with a negative value are hidden when `walking_time` is above 0. |
 | `delay` | int / null | `1` | imhd.sk's delay in whole minutes. Positive is late, negative is early, 0 is on time. `null` when the departure isn't vehicle-tracked. |
@@ -548,7 +552,7 @@ The `text` field:
 | `*` | Departing now. The expected time has been reached, and the row is dropped once it is more than 30 s in the past. |
 | `<1 min` | Less than a minute to go. |
 | `4 min` | Whole minutes, from 1 to 60. |
-| `22:15` | More than 60 minutes ahead (rounded to the nearest minute). |
+| `22:15` | More than 60 minutes ahead (the same clock time as `time`). |
 | `~` in front | Timetable-only departure (`realtime: false`), for example `~13 min` or `~23:10`. `*` never gets a `~`. |
 
 ## Templating quick start
@@ -1328,8 +1332,8 @@ for anything you consider private.
 Home Assistant can't keep a connection to imhd.sk. Short drops don't matter:
 the entities become unavailable only after 5 minutes without a connection.
 Check that Home Assistant can reach `https://imhd.sk` (DNS, firewall, proxy,
-ad blockers that block WebSockets). The attributes `last_message` and
-`reconnects` show what is happening. The integration retries by itself, and
+ad blockers that block WebSockets). The `reconnects` attribute and the
+diagnostics download show what is happening. The integration retries by itself, and
 `imhd.refresh` forces a reconnect.
 
 **A repair issue says "imhd.sk refused the connection".**
@@ -1387,7 +1391,7 @@ An unnumbered service trip, such as a vehicle going to the depot. Hide it with
 
 **The minutes differ by one from another app.**
 `minutes` is rounded down, like the imhd.sk board: `4 min` means 4 to 5
-minutes. `time` is rounded to the nearest minute, and `departure` holds the
+minutes. `time` is the clock time imhd.sk shows, and `departure` holds the
 exact expected time.
 
 **My entity ids are different from the examples.**

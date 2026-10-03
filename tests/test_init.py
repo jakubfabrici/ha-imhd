@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+from datetime import timedelta
 from typing import Any
 
+from freezegun.api import FrozenDateTimeFactory
 import pytest
 
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntryState
@@ -12,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
 from custom_components.imhd.const import (
@@ -269,3 +272,52 @@ async def test_yaml_removed_entry_creates_issue(
 
     assert await hass.config_entries.async_remove(old.entry_id)
     assert issues.async_get_issue(DOMAIN, f"yaml_entry_removed_{old.entry_id}") is None
+
+
+async def test_admission_clears_rejection_on_quiet_stop(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A later cack(true) clears the rejection even if no `tabs` follow (finding 6)."""
+    fake_feed.reject = "-12 too many connections from this IP address"
+    await setup_entry(hass, config_entry)
+    issue_id = f"subscription_rejected_{config_entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+    listener = fake_feed.instances[0].listener
+    listener.feed_admitted()
+    listener.feed_connected()
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
+    freezer.tick(timedelta(seconds=7))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.hodzovo_departures").state == "unknown"
+
+
+async def test_options_changed_during_setup_are_applied(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+) -> None:
+    """A YAML import updating the entry while it sets up is not lost (finding 5)."""
+    initial = fake_feed.initial
+    fake_feed.initial = None
+    setup = hass.async_create_task(hass.config_entries.async_setup(config_entry.entry_id))
+    async with asyncio.timeout(5):
+        while not fake_feed.instances:
+            await asyncio.sleep(0)
+    assert config_entry.state is ConfigEntryState.SETUP_IN_PROGRESS
+    hass.config_entries.async_update_entry(
+        config_entry, options={**config_entry.options, CONF_LINES: ["9"]}
+    )
+    fake_feed.initial = initial
+    fake_feed.instances[0].listener.feed_tabs(initial)
+    await setup  # its result reflects the reload that the update triggered
+    await hass.async_block_till_done()
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert len(fake_feed.instances) == 2
+    assert hass.states.get("sensor.hodzovo_departures").state == "4"

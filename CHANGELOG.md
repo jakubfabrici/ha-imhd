@@ -35,7 +35,7 @@ First public release. Requires Home Assistant **2025.2.0** or newer.
   to a point on the map, by name (imhd.sk search), or by stop ID / pasted
   imhd.sk link (`?st=` board links and `/zastavka/…` stop pages). Options flow
   for the filters, and a reconfigure flow that changes the stop and keeps the
-  entity ids.
+  entity ids (UI entries only; YAML-imported stops are managed in YAML).
 - YAML configuration (`imhd: !include imhd.yaml`). `stop:` accepts a stop ID,
   an imhd.sk link or the exact stop name. Items are imported into regular
   config entries, imported entries are updated on restart, and a repair issue

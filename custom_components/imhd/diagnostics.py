@@ -17,8 +17,11 @@ def _trim_raw(payload: Any) -> list[dict[str, Any]]:
     """Return the last `tabs` payload with at most RAW_ROWS rows per platform."""
     trimmed: list[dict[str, Any]] = []
     for element in iter_platform_elements(payload):
-        rows = element.get("tab") or []
-        trimmed.append({**element, "tab": list(rows[:RAW_ROWS]), "tab_rows_total": len(rows)})
+        rows = element.get("tab")
+        if isinstance(rows, list):
+            trimmed.append({**element, "tab": rows[:RAW_ROWS], "tab_rows_total": len(rows)})
+        else:
+            trimmed.append({**element, "tab": repr(rows)[:200], "tab_rows_total": None})
     return trimmed
 
 
@@ -45,6 +48,9 @@ async def async_get_config_entry_diagnostics(
             "sessions": coordinator.feed.sessions,
             "reconnects": coordinator.reconnects,
             "last_update": data.last_update.isoformat() if data.last_update else None,
+            "last_message": (
+                coordinator.last_message.isoformat() if coordinator.last_message else None
+            ),
             "server_time_offset_s": coordinator.server_time_offset,
         },
         "departures": {

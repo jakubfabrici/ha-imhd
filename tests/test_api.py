@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 
 import aiohttp
 import pytest
@@ -252,7 +253,7 @@ async def test_parse_tabs_timetable_without_labels(hass: HomeAssistant) -> None:
         (299, True, "4 min"),
         (299, False, "~4 min"),
         (3600, True, "60 min"),
-        (3700, False, "~22:02"),
+        (3700, False, "~22:01"),
     ],
 )
 def test_countdown_text(seconds: int, realtime: bool, text: str) -> None:
@@ -350,3 +351,121 @@ def test_departure_dict_keys() -> None:
         "vehicle_type",
     ]
     assert isinstance(deps[0].departure, datetime)
+
+
+def _token(value: dict) -> str:
+    """Encode a stop page token (UTF-8 JSON bytes + 0x4F, hex)."""
+    return bytes((b + 0x4F) & 0xFF for b in json.dumps(value).encode()).hex()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "²",
+        "١٢",
+        "https://imhd.sk/ba/online-zastavkova-tabula?st=²",
+        f"https://imhd.sk/ba/zastavka/x/{_token({'g': '²'})}",
+    ],
+)
+def test_parse_stop_input_non_ascii_digits(text: str) -> None:
+    """Unicode digits are not stop ids (finding 4/8: no ValueError)."""
+    with pytest.raises(ImhdInvalidStopError):
+        parse_stop_input(text)
+
+
+def test_parse_stop_page_non_ascii_stop_id() -> None:
+    """A weird stopId means "not found", not a crash."""
+    html = '<script>$.extend( options, {"stopId": "²", "stopName": "X"} );</script>'
+    with pytest.raises(ImhdStopNotFoundError):
+        parse_stop_page(html, "ba")
+
+
+async def test_parse_tabs_skips_malformed_rows(hass: HomeAssistant) -> None:
+    """Bad rows are skipped; good rows of the same payload survive (finding 4)."""
+    good = row("9", 4, "Karlova Ves", delay=1, trip=1)
+    payload = [
+        tabs(
+            213,
+            [
+                good,
+                row("1", 2, "Huge", trip=2, cas=1e30),
+                row("2", 2, "Inf", trip=3, cas=float("inf"), casCP=float("nan")),
+                row("3", 2, "Inf index", delay=0, trip=4, tuZidx=float("inf"), predoslaZidx=1),
+                row("²", 3, "Unicode line", trip=5),
+                {**row("5", 3, "Bad text", trip=6), "odjazd": {"x": 1}, "konecnaZstr": 7},
+                "junk",
+            ],
+        ),
+        {"zastavka": 83, "nastupiste": 214, "tab": 5},
+        {"zastavka": 83, "nastupiste": 215, "tab": ["junk", None, 3]},
+    ]
+    vehicles = {"1:4401": {"issi": "1:4401", "lf": "²", "ac": "1", "type": ["x"]}}
+    deps = parse_tabs(payload, LABELS, NOW, stop_id=83, vehicles=vehicles)
+    lines = [dep.line for dep in deps]
+    assert "9" in lines
+    assert "1" not in lines
+    assert "2" not in lines
+    nine = next(dep for dep in deps if dep.line == "9")
+    assert nine.air_conditioning is True
+    assert nine.low_floor is None
+    for dep in deps:
+        dep.as_dict()  # serialisable, no exception
+
+
+def test_parse_lookups_tolerate_odd_json() -> None:
+    """Unexpected JSON shapes give no stops instead of exceptions (finding 8)."""
+    for payload in ([], [1, 2], "x", None, {"results": "x"}, {"stops": {"a": 1}}):
+        assert parse_search(payload, "ba") == []
+        assert parse_nearest(payload, "ba", 48.1, 17.1) == []
+    search = {
+        "results": [
+            "junk",
+            {"class": "stop", "value": "g5"},
+            {"class": "stop", "value": "g6", "name": None},
+            {"class": "stop", "value": "g7", "name": "Ok"},
+            {"class": "stop", "value": "g²", "name": "Bad"},
+        ]
+    }
+    assert [(s.stop_id, s.name) for s in parse_search(search, "ba")] == [(7, "Ok")]
+    nearest = {
+        "stops": [
+            "junk",
+            {"id": "x", "lat": 1, "lng": 2},
+            {"id": 9, "lat": "48.1", "lng": "17.1", "name": None, "platform_labels": [1]},
+        ]
+    }
+    [stop] = parse_nearest(nearest, "ba", 48.1, 17.1)
+    assert (stop.stop_id, stop.name, stop.platform_labels) == (9, "9", {})
+
+
+@pytest.mark.parametrize(
+    ("cas", "cas_cp", "time", "scheduled"),
+    [
+        ("21:32:45", "21:33:00", "21:33", "21:33"),  # imhd predicts 15 s early
+        ("21:32:40", "21:33:45", "21:32", "21:33"),  # truncated, not rounded
+        ("21:33:44", "21:33:30", "21:33", "21:33"),
+    ],
+)
+async def test_clock_times_like_imhd(
+    hass: HomeAssistant, cas: str, cas_cp: str, time: str, scheduled: str
+) -> None:
+    """HH:MM texts follow imhd.sk / stop.js (finding 10)."""
+    tz = dt_util.get_time_zone("Europe/Bratislava")
+    ms = lambda text: int(  # noqa: E731
+        datetime.fromisoformat(f"2026-10-03T{text}").replace(tzinfo=tz).timestamp() * 1000
+    )
+    raw = {**row("9", 0, "X"), "cas": ms(cas), "casCP": ms(cas_cp)}
+    [dep] = parse_tabs([tabs(213, [raw])], LABELS)
+    assert dep.as_dict()["time"] == time
+    assert dep.as_dict()["scheduled_time"] == scheduled
+
+
+def test_countdown_text_hhmm_matches_time() -> None:
+    """Beyond 60 minutes the text is the same clock time as `time`."""
+    tz = dt_util.get_time_zone("Europe/Bratislava")
+    when = datetime.fromisoformat("2026-10-03T22:32:45").replace(tzinfo=tz)
+    now = when - timedelta(minutes=61, seconds=30)
+    assert countdown_text(when, now, realtime=True) == "22:33"
+    assert countdown_text(when, when - timedelta(minutes=60, seconds=30), realtime=True) == (
+        "60 min"
+    )

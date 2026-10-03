@@ -172,7 +172,8 @@ class ImhdDepartureSensor(ImhdEntity, SensorEntity):
 
     @property
     def _departure(self) -> Departure | None:
-        departures = self.coordinator.data.departures
+        # The full filtered list: departure_N may go beyond max_departures.
+        departures = self.coordinator.data.matching
         return departures[self._index] if self._index < len(departures) else None
 
     @property

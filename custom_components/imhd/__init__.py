@@ -158,6 +158,8 @@ def _cached_stop(entry: ImhdConfigEntry) -> StopInfo | None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ImhdConfigEntry) -> bool:
     """Set up one stop from a config entry."""
+    # Registered first: a YAML import may update the entry while it sets up.
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     api = ImhdApi(async_get_clientsession(hass))
     section, stop_id = entry.data[CONF_SECTION], int(entry.data[CONF_STOP_ID])
     try:
@@ -183,7 +185,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ImhdConfigEntry) -> bool
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_on_stop))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
 

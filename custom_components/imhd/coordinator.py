@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
+import math
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -126,6 +127,22 @@ class DepartureFilter:
         return result
 
 
+# Departure fields that change with time only (recomputed by the tick).
+# Countdowns change every tick, and the second-precision timestamps move with every
+# prediction tweak on busy boards; the minute-precision `time`/`scheduled_time`
+# fields still capture real changes.
+_VOLATILE_FIELDS = frozenset({"minutes", "leave_in", "text", "departure", "scheduled"})
+
+
+def content_key(data: StopData) -> tuple[Any, ...]:
+    """Return what identifies the published content (minute precision, no countdowns)."""
+    departures = tuple(
+        tuple(item for item in dep.as_dict().items() if item[0] not in _VOLATILE_FIELDS)
+        for dep in data.matching
+    )
+    return (departures, tuple(data.info))
+
+
 class ImhdCoordinator(DataUpdateCoordinator[StopData]):
     """Keep the realtime departures of one stop up to date."""
 
@@ -152,7 +169,9 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.connected = False
         self.has_data = False
         self.rejected: str | None = None
+        # When the departures (or info texts) last changed / imhd.sk last sent tabs.
         self.last_update: datetime | None = None
+        self.last_message: datetime | None = None
         self.last_raw: Any = None
         self.server_time_offset: float | None = None
         self._disconnected_at: datetime | None = None
@@ -165,6 +184,7 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self._unsub_tick: CALLBACK_TYPE | None = None
         self._unsub_publish: CALLBACK_TYPE | None = None
         self._unsub_empty: CALLBACK_TYPE | None = None
+        self._content: tuple[Any, ...] | None = None
         self.data = StopData(stop=stop)
 
     # ------------------------------------------------------------------ setup
@@ -286,11 +306,24 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         )
 
     @callback
-    def _publish(self) -> None:
+    def _publish(self, *, from_feed: bool = False, force: bool = False) -> None:
+        """Publish a fresh snapshot.
+
+        Feed events publish only when the departures or info texts changed
+        (busy boards repeat identical data every few seconds); they also move
+        `last_update`. The 30 s tick and connection changes always publish.
+        """
         if self._unsub_publish is not None:
             self._unsub_publish()
             self._unsub_publish = None
-        self.async_set_updated_data(self.build())
+        data = self.build()
+        content = content_key(data)
+        if from_feed:
+            if content == self._content and not force:
+                return
+            self.last_update = data.last_update = dt_util.now()
+        self._content = content
+        self.async_set_updated_data(data)
 
     @callback
     def _schedule_publish(self) -> None:
@@ -301,7 +334,7 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
     @callback
     def _delayed_publish(self, _now: datetime) -> None:
         self._unsub_publish = None
-        self._publish()
+        self._publish(from_feed=True)
 
     async def _async_update_data(self) -> StopData:
         """Recompute the snapshot (used by `homeassistant.update_entity`)."""
@@ -352,20 +385,29 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
     def feed_tabs(self, payload: Any) -> None:
         """Merge a `tabs` payload (one element per platform)."""
         self.last_raw = payload
+        self.last_message = dt_util.now()
         for element in iter_platform_elements(payload):
             stop, platform = element.get("zastavka"), element.get("nastupiste")
             if platform is None or (stop is not None and str(stop) != str(self.stop.stop_id)):
                 continue
+            if not isinstance(element.get("tab"), list):
+                _LOGGER.debug("%s: ignoring malformed platform %.200r", self.name, element)
+                continue
             # The server only re-sends platforms that changed.
             self._rows[str(platform)] = element
-            if isinstance(timestamp := element.get("timestamp"), (int, float)):
+            timestamp = element.get("timestamp")
+            if (
+                isinstance(timestamp, (int, float))
+                and not isinstance(timestamp, bool)
+                and math.isfinite(timestamp)
+            ):
                 self.server_time_offset = timestamp / 1000 - dt_util.utcnow().timestamp()
-        if not self.has_data or self.rejected is not None:
+        first = not self.has_data
+        if first or self.rejected is not None:
             self._clear_rejection()
-        self.last_update = dt_util.now()
         self.has_data = True
         self._first_result.set()
-        self._publish()
+        self._publish(from_feed=True, force=first)
 
     @callback
     def feed_vehicle(self, payload: Any) -> None:
@@ -412,6 +454,15 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.async_update_listeners()
 
     @callback
+    def feed_admitted(self) -> None:
+        """Handle an admitted connection: a previous refusal is over."""
+        self._clear_rejection()
+
+    @callback
     def _clear_rejection(self) -> None:
-        self.rejected = None
+        """Forget a refusal (and its repairs issue); entities may become available."""
         ir.async_delete_issue(self.hass, DOMAIN, f"{ISSUE_REJECTED}_{self.config_entry.entry_id}")
+        if self.rejected is not None:
+            _LOGGER.info("%s: imhd.sk accepts the connection again", self.name)
+            self.rejected = None
+            self.async_update_listeners()

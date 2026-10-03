@@ -102,6 +102,10 @@ UNAVAILABLE_AFTER: Final = 300.0
 REJECT_BACKOFF: Final = 900.0
 REJECT_BACKOFF_MAX: Final = 3600.0
 CONNECT_TIMEOUT: Final = 20.0
+# Extra time allowed for the websocket handshake on top of CONNECT_TIMEOUT.
+HANDSHAKE_TIMEOUT: Final = 10.0
+# A session that lasted this long resets the reconnect back-off.
+STABLE_SESSION: Final = 60.0
 BACKOFF_MIN: Final = 2.0
 BACKOFF_MAX: Final = 60.0
 FIRST_DATA_TIMEOUT: Final = 15.0

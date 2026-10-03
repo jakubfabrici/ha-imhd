@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from homeassistant.config_entries import SOURCE_USER, ConfigEntryState
+from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER, ConfigEntryState
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
@@ -254,3 +254,71 @@ async def test_reconfigure_conflict(
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"stop": "83"})
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_stop_id_unicode_digits(hass: HomeAssistant, mock_http: AiohttpClientMocker) -> None:
+    """Unicode digits give a form error, not "Unknown error" (finding 8)."""
+    result = await start(hass, "stop_id")
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"stop": "²"})
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "invalid_stop"}
+
+
+def _yaml_entry(hass: HomeAssistant) -> MockConfigEntry:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_IMPORT,
+        title="Hodzovo",
+        unique_id="ba_83_hodzovo",
+        data={CONF_SECTION: "ba", CONF_STOP_ID: 83, CONF_NAME: "Hodzovo"},
+        options={CONF_LINES: ["9"]},
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_reconfigure_yaml_entry_aborts(hass: HomeAssistant) -> None:
+    """Entries from YAML are changed in YAML (finding 9)."""
+    entry = _yaml_entry(hass)
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "yaml_managed"
+
+
+async def test_options_flow_yaml_entry_notes_override(hass: HomeAssistant) -> None:
+    """The options form of a YAML entry explains that YAML wins on restart."""
+    entry = _yaml_entry(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "yaml"
+    settings = {k: v for k, v in SETTINGS.items() if k != CONF_NAME}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], settings)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_LINES] == ["9", "X13"]
+
+
+async def test_import_without_name_skips_lookup_when_known(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """An unchanged YAML stop without a name does not fetch the board page again."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        source=SOURCE_IMPORT,
+        title="Hodžovo nám.",
+        unique_id="ba_83_hodzovo_nam",
+        data={
+            CONF_SECTION: "ba",
+            CONF_STOP_ID: 83,
+            CONF_NAME: "Hodžovo nám.",
+            CONF_STOP_NAME: "Hodžovo nám.",
+        },
+        options={},
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_IMPORT}, data={"city": "ba", "stop": 83}
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert aioclient_mock.call_count == 0
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1

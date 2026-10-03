@@ -7,8 +7,14 @@ from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
 
-from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, STATE_OFF, STATE_ON, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    ATTR_UNIT_OF_MEASUREMENT,
+    EVENT_STATE_CHANGED,
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNKNOWN,
+)
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -20,9 +26,11 @@ from custom_components.imhd.const import (
     CONF_MAX_DEPARTURES,
     CONF_WALKING_TIME,
     DOMAIN,
+    DOMAIN as IMHD_DOMAIN,
 )
+from custom_components.imhd.diagnostics import async_get_config_entry_diagnostics
 
-from .conftest import LABELS, FakeFeed, load_json, setup_entry
+from .conftest import LABELS, FakeFeed, load_json, sample_tabs, setup_entry
 
 MAIN = "sensor.hodzovo_departures"
 
@@ -351,3 +359,135 @@ async def test_surplus_row_sensors_removed(
     assert registry.async_get("sensor.hodzovo_departure_2") is None
     assert registry.async_get("sensor.hodzovo_departure_3") is None
     assert registry.async_get("sensor.hodzovo_departure_1") is not None
+
+
+async def test_identical_payloads_do_not_churn(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """10 identical `tabs` 3 s apart cause at most one state change (finding 3)."""
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    entity_ids = {
+        entry.entity_id
+        for entry in er.async_entries_for_config_entry(er.async_get(hass), config_entry.entry_id)
+    }
+    changes: list[str] = []
+
+    @callback
+    def _record(event: Event) -> None:
+        if event.data["entity_id"] in entity_ids:
+            changes.append(event.data["entity_id"])
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, _record)
+    for _ in range(10):
+        freezer.tick(timedelta(seconds=3))
+        listener.feed_tabs(sample_tabs())
+        await hass.async_block_till_done()
+    assert len(changes) <= 1
+    attrs = hass.states.get("binary_sensor.hodzovo_realtime_connected").attributes
+    assert "last_message" not in attrs
+    assert attrs["reconnects"] == 0
+
+
+async def test_second_level_prediction_jitter_does_not_churn(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+) -> None:
+    """Predictions moving by seconds within the same minute publish nothing."""
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    changes: list[str] = []
+
+    @callback
+    def _record(event: Event) -> None:
+        if event.data["entity_id"].startswith(("sensor.hodzovo", "binary_sensor.hodzovo")):
+            changes.append(event.data["entity_id"])
+
+    hass.bus.async_listen(EVENT_STATE_CHANGED, _record)
+    for shift_ms in (5000, 10000, -5000):
+        payload = sample_tabs()
+        for platform in payload:
+            for item in platform["tab"]:
+                item["cas"] += shift_ms
+        listener.feed_tabs(payload)
+        await hass.async_block_till_done()
+    assert changes == []
+
+
+async def test_last_update_tracks_content_changes(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """`last_update` moves only when the departures change."""
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    first = hass.states.get(MAIN).attributes["last_update"]
+    freezer.tick(timedelta(seconds=5))
+    listener.feed_tabs(sample_tabs())
+    await hass.async_block_till_done()
+    assert hass.states.get(MAIN).attributes["last_update"] == first
+    changed = sample_tabs()
+    changed[0]["tab"][0]["casDelta"] = 3
+    listener.feed_tabs(changed)
+    await hass.async_block_till_done()
+    assert hass.states.get(MAIN).attributes["last_update"] == "2026-10-03T21:00:05+02:00"
+
+
+async def test_malformed_payload_does_not_freeze_stop(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A broken platform / row is ignored; the stop keeps updating (finding 4)."""
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_tabs(
+        [
+            {"zastavka": 83, "nastupiste": 215, "tab": 5},
+            {"zastavka": 83, "nastupiste": 216, "tab": [{"linka": "7", "cas": 1e30}, "junk"]},
+            {"zastavka": 83, "nastupiste": 217, "timestamp": float("inf"), "tab": []},
+        ]
+    )
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(MAIN).state == "0"
+    response = await hass.services.async_call(
+        IMHD_DOMAIN,
+        "get_departures",
+        {"entity_id": MAIN},
+        blocking=True,
+        return_response=True,
+    )
+    assert [d["line"] for d in response["departures"]] == ["4", "9", "X13", "N33"]
+    diag = await async_get_config_entry_diagnostics(hass, config_entry)
+    assert diag["departures"]["total_after_filters"] == 4
+
+
+async def test_departure_sensors_beyond_max_departures(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+) -> None:
+    """departure_N reads the full filtered list, not the truncated one (finding 7)."""
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={**config_entry.options, CONF_MAX_DEPARTURES: 2, CONF_DEPARTURE_SENSORS: 4},
+    )
+    await setup_entry(hass, config_entry)
+    assert hass.states.get(MAIN).attributes["departure_count"] == 2
+    assert hass.states.get("sensor.hodzovo_departure_3").state == "12"
+    assert hass.states.get("sensor.hodzovo_departure_4").state == "25"

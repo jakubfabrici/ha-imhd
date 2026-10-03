@@ -152,3 +152,16 @@ async def test_diagnostics(
     assert diag["departures"]["total_after_filters"] == 4
     assert len(diag["last_raw_payload"]) == 2
     assert diag["last_raw_payload"][0]["tab_rows_total"] == 2
+
+
+async def test_find_stops_odd_json(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """Unexpected JSON from imhd.sk gives an empty result, not a crash (finding 8)."""
+    aioclient_mock.get(NEAREST_URL, json=[1, 2, 3])
+    aioclient_mock.get(STOP_PAGE_URL, exc=TimeoutError())
+    await setup_entry(hass, config_entry)
+    assert await call(hass, "find_stops", {"city": "ba"}) == {"stops": []}

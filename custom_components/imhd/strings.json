@@ -96,13 +96,38 @@
       "cannot_connect": "Failed to connect to imhd.sk.",
       "stop_not_found": "The stop was not found on imhd.sk.",
       "invalid_stop": "The stop could not be understood.",
-      "unknown": "Unexpected error."
+      "unknown": "Unexpected error.",
+      "yaml_managed": "This stop comes from your YAML configuration (`imhd:`). Change the stop there and restart Home Assistant."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Departure filters",
+        "data": {
+          "platforms": "Platforms",
+          "lines": "Lines",
+          "exclude_lines": "Excluded lines",
+          "direction": "Direction",
+          "max_departures": "Maximum departures",
+          "walking_time": "Walking time to the stop",
+          "time_to_leave_window": "Time to leave window",
+          "departure_sensors": "Per-departure sensors"
+        },
+        "data_description": {
+          "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
+          "lines": "Only show these lines (exact match, case-insensitive). Leave empty for all lines.",
+          "exclude_lines": "Never show these lines.",
+          "direction": "Only show departures whose destination or terminal stop contains one of these texts (case and diacritics are ignored).",
+          "max_departures": "How many departures the main sensor lists (1-30).",
+          "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
+          "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10)."
+        }
+      },
+      "yaml": {
+        "title": "Departure filters",
+        "description": "This stop comes from your YAML configuration (`imhd:`). Changes made here are replaced by the YAML settings at the next restart, so prefer editing the YAML file.",
         "data": {
           "platforms": "Platforms",
           "lines": "Lines",

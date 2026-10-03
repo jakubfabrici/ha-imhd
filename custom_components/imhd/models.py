@@ -12,6 +12,8 @@ from .const import BASE_URL, SECTIONS
 
 # imhd.sk shows "N min" up to this many minutes, then the clock time.
 COUNTDOWN_TEXT_MAX = 60
+# imhd.sk's expected departure (`cas`) runs this much ahead of its displayed time.
+PREDICTION_LEAD = timedelta(seconds=15)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -123,8 +125,8 @@ class Departure:
             "destination_city": self.destination_city,
             "departure": self.departure.isoformat(),
             "scheduled": self.scheduled.isoformat() if self.scheduled else None,
-            "time": clock_time(self.departure),
-            "scheduled_time": (clock_time(self.scheduled) if self.scheduled else None),
+            "time": expected_clock_time(self.departure),
+            "scheduled_time": clock_time(self.scheduled) if self.scheduled else None,
             "minutes": self.minutes,
             "leave_in": self.leave_in,
             "delay": self.delay,
@@ -192,19 +194,28 @@ def countdown_text(when: datetime, now: datetime, *, realtime: bool) -> str:
     elif minutes <= COUNTDOWN_TEXT_MAX:
         text = f"{minutes} min"
     else:
-        text = clock_time(when)
+        text = expected_clock_time(when)
     return text if realtime else f"~{text}"
 
 
 def clock_time(when: datetime) -> str:
-    """Return HH:MM rounded to the nearest minute (imhd.sk shifts times by seconds)."""
-    return (when + timedelta(seconds=30)).strftime("%H:%M")
+    """Return HH:MM, truncated like stop.js (21:33:45 -> "21:33")."""
+    return when.strftime("%H:%M")
+
+
+def expected_clock_time(when: datetime) -> str:
+    """Return the HH:MM imhd.sk shows for an expected departure (`cas`).
+
+    imhd.sk predicts departures 15 s early; its board shows cas + 15 s truncated
+    (checked against 1,196 server rendered times).
+    """
+    return clock_time(when + PREDICTION_LEAD)
 
 
 def natural_key(text: str) -> tuple[Any, ...]:
     """Sort key ordering embedded numbers numerically ("9" < "N21" < "X13")."""
-    digits = "".join(ch for ch in text if ch.isdigit())
-    prefix = "".join(ch for ch in text if not ch.isdigit())
+    digits = "".join(ch for ch in text if ch.isascii() and ch.isdigit())
+    prefix = "".join(ch for ch in text if not (ch.isascii() and ch.isdigit()))
     return (prefix.casefold(), int(digits) if digits else -1, text)
 
 

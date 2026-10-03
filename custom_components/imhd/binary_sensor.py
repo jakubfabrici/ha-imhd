@@ -100,12 +100,8 @@ class ImhdConnectedSensor(ImhdBinarySensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return connection statistics."""
-        last = self.coordinator.last_update
-        return {
-            "last_message": last.isoformat() if last else None,
-            "reconnects": self.coordinator.reconnects,
-        }
+        """Return connection statistics (the last message time is in diagnostics)."""
+        return {"reconnects": self.coordinator.reconnects}
 
 
 class ImhdDisruptionSensor(ImhdBinarySensor):

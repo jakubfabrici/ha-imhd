@@ -43,7 +43,7 @@ destination: Koliba        # headsign, may contain a via stop: "Hrad ► Červen
 destination_city: Bratislava
 departure: "2026-10-05T08:02:10+02:00"   # expected, ISO 8601, to the second
 scheduled: "2026-10-05T08:00:45+02:00"   # timetable
-time: "08:02"              # expected, local HH:MM, rounded to the nearest minute
+time: "08:02"              # expected, local HH:MM, as the imhd.sk board shows it
 scheduled_time: "08:01"
 minutes: 4                 # whole minutes until departure (rounded down), >= 0
 leave_in: 1                # minutes - walking_time
@@ -89,8 +89,8 @@ The outputs below are for this board (it is 07:58, walking time 3 minutes):
 - **`delay` can be `null`.** Timetable-only departures have no delay (and no
   vehicle, `low_floor`, `previous_stop`, …). Test `d.delay is none` (or use
   `rejectattr('delay', 'none')`) before comparing.
-- **`minutes` is rounded down, `time` to the nearest minute.** Like the imhd.sk
-  board, `4 min` means 4 to 5 minutes. `departure` has the exact time.
+- **`minutes` is rounded down, `time` is the board's clock time.** Like the
+  imhd.sk board, `4 min` means 4 to 5 minutes. `departure` has the exact time.
 - **Whitespace.** `{%-` and `-%}` remove the whitespace and newlines around a
   tag; use them when the output must be a single line (sensor states are
   limited to 255 characters - put long text into attributes or Markdown cards).

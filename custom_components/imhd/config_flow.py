@@ -8,6 +8,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import (
+    SOURCE_IMPORT,
     SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigFlow,
@@ -189,8 +190,12 @@ class ImhdConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Change the stop of an existing entry."""
+        entry = self._get_reconfigure_entry()
+        if entry.source == SOURCE_IMPORT:
+            # The unique id follows the stop; YAML would re-create the old one.
+            return self.async_abort(reason="yaml_managed")
         if user_input is None:
-            self._section = self._get_reconfigure_entry().data[CONF_SECTION]
+            self._section = entry.data[CONF_SECTION]
         return await self._async_step_city("reconfigure", user_input)
 
     async def _async_step_city(
@@ -414,16 +419,31 @@ class ImhdConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     def _known_import(self, import_data: dict[str, Any]) -> tuple[ConfigEntry, str] | None:
-        """Return the existing entry of a YAML item given by id/URL and name."""
-        if not (name := str(import_data.get(CONF_NAME) or "").strip()):
-            return None
+        """Return the existing entry of a YAML item given by stop id / URL.
+
+        With a name the unique id is known; without one, an imported entry of
+        the same stop that uses the stop name matches.
+        """
         try:
             section, stop_id = parse_stop_input(import_data[CONF_STOP])
         except ImhdInvalidStopError:
             return None
-        unique_id = make_unique_id(section or import_data[CONF_CITY], stop_id, name)
-        entry = self.hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, unique_id)
-        return (entry, name) if entry is not None else None
+        section = section or import_data[CONF_CITY]
+        if name := str(import_data.get(CONF_NAME) or "").strip():
+            unique_id = make_unique_id(section, stop_id, name)
+            entry = self.hass.config_entries.async_entry_for_domain_unique_id(DOMAIN, unique_id)
+            return (entry, name) if entry is not None else None
+        for entry in self._async_current_entries(include_ignore=False):
+            data = entry.data
+            if (
+                entry.source == SOURCE_IMPORT
+                and data.get(CONF_SECTION) == section
+                and data.get(CONF_STOP_ID) == stop_id
+                and data.get(CONF_NAME)
+                and data.get(CONF_NAME) == data.get(CONF_STOP_NAME)
+            ):
+                return entry, data[CONF_NAME]
+        return None
 
     async def _async_finish_import(
         self, unique_id: str, name: str, data: dict[str, Any], options: dict[str, Any]
@@ -446,6 +466,15 @@ class ImhdOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Show / save the filter settings."""
+        if self.config_entry.source == SOURCE_IMPORT:
+            return await self.async_step_yaml(user_input)
+        return self._async_settings("init", user_input)
+
+    async def async_step_yaml(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Same form for YAML entries, noting that YAML wins at the next start."""
+        return self._async_settings("yaml", user_input)
+
+    def _async_settings(self, step_id: str, user_input: dict[str, Any] | None) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(data=clean_options(user_input))
         labels = self.config_entry.data.get(CONF_PLATFORM_LABELS) or {}
@@ -456,7 +485,7 @@ class ImhdOptionsFlow(OptionsFlow):
             settings_schema(platforms, with_name=False),
             {**DEFAULT_OPTIONS, **self.config_entry.options},
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id=step_id, data_schema=schema)
 
 
 async def _async_migrate_entity_unique_ids(
