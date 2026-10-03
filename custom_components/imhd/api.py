@@ -38,7 +38,7 @@ from .const import (
     STALE_AFTER,
     USER_AGENT,
 )
-from .models import Departure, StopInfo, board_url, natural_key, normalize_text
+from .models import Departure, StopInfo, board_url, normalize_text
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +48,8 @@ _OPTION_RE = re.compile(r'<option\s+value="(\d+)"[^>]*>([^<]*)', re.I)
 _SEARCH_VALUE_RE = re.compile(r"^g(\d+)$", re.ASCII)
 _SECTION_PATH_RE = re.compile(r"^/([a-z]+)/")
 _INFO_SPLIT_RE = re.compile(r" {10,}")
+# English names of sections that differ from the Slovak ones (as in the UI).
+_SECTION_ALIASES = {"slovakia & world": "transport", "slovakia and world": "transport"}
 
 # `cack` rejection codes (texts from the imhd.sk board page).
 REJECTION_CODES: dict[int, str] = {
@@ -95,6 +97,8 @@ def resolve_section(value: str | None) -> str | None:
     wanted = normalize_text(str(value))
     if wanted in SECTIONS:
         return wanted
+    if wanted in _SECTION_ALIASES:
+        return _SECTION_ALIASES[wanted]
     for code, city in SECTIONS.items():
         name = normalize_text(city)
         if wanted == name or wanted in name.split("-"):
@@ -178,7 +182,11 @@ def parse_stop_page(html: str, section: str) -> StopInfo:
 
 
 def parse_nearest(payload: Any, section: str, latitude: float, longitude: float) -> list[StopInfo]:
-    """Parse a GetNearestStop response."""
+    """Parse a GetNearestStop response.
+
+    Stop ids are global and the lookup may return stops of other cities: each
+    stop gets the section of its own city (falling back to `section`).
+    """
     stops: list[StopInfo] = []
     for item in _list_of_mappings(payload, "stops"):
         try:
@@ -190,13 +198,14 @@ def parse_nearest(payload: Any, section: str, latitude: float, longitude: float)
         ):
             continue
         labels = item.get("platform_labels")
+        city = _text(item.get("city"))
         stops.append(
             StopInfo(
                 stop_id=stop_id,
                 name=_text(item.get("name")) or str(stop_id),
                 name_long=_text(item.get("name_long")),
-                section=section,
-                city=_text(item.get("city")),
+                section=resolve_section(city) or section,
+                city=city,
                 latitude=lat,
                 longitude=lon,
                 platform_labels={str(k): str(v) for k, v in labels.items()}
@@ -389,7 +398,11 @@ def parse_tabs(
     stop_id: int | None = None,
     vehicles: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> list[Departure]:
-    """Parse a `tabs` payload into departures sorted by expected time.
+    """Parse a `tabs` payload into departures sorted like the imhd.sk board.
+
+    The order is the countdown (`minutes`), then the minute shown (`time`), then
+    a fixed order (line, trip): sorting by the prediction would swap departures
+    whenever it moves by a second or two.
 
     With `now`, rows that departed more than the grace period ago are dropped
     and `minutes`/`leave_in` are computed.
@@ -416,11 +429,12 @@ def parse_tabs(
             if departure is None:
                 continue
             if now is not None:
-                if departure.departure < now - DEPARTED_GRACE:
+                # In UTC: local times compare as wall clock times (wrong across DST).
+                if dt_util.as_utc(departure.departure) < dt_util.as_utc(now) - DEPARTED_GRACE:
                     continue
                 departure = departure.with_countdown(now)
             departures.append(departure)
-    departures.sort(key=lambda dep: (dep.departure, natural_key(dep.line)))
+    departures.sort(key=lambda dep: (dep.minutes, dep.shown_order))
     return departures
 
 

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+import json
+from pathlib import Path
+import re
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -30,9 +33,12 @@ from custom_components.imhd.const import (
     CONF_STOP_NAME,
     CONF_WALKING_TIME,
     DOMAIN,
+    SECTIONS,
 )
 
-from .conftest import LABELS, NEAREST_URL, SEARCH_URL, load_fixture
+from .conftest import LABELS, NEAREST_URL, SEARCH_URL, load_fixture, load_json
+
+COMPONENT = Path(__file__).parents[1] / "custom_components" / DOMAIN
 
 SETTINGS: dict[str, Any] = {
     CONF_NAME: "Hodzovo",
@@ -126,6 +132,9 @@ async def test_search_flow(hass: HomeAssistant, mock_http: AiohttpClientMocker) 
     result = await start(hass, "search")
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"query": "hodzovo"})
     assert result["step_id"] == "pick_stop"
+    # A single hit is still confirmed; the search API has no platform labels.
+    options = result["data_schema"].schema["stop_choice"].config["options"]
+    assert options == [{"value": "83", "label": "Hodžovo nám. (Bratislava)"}]
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"stop_choice": "83"}
     )
@@ -322,3 +331,100 @@ async def test_import_without_name_skips_lookup_when_known(
     assert result["reason"] == "already_configured"
     assert aioclient_mock.call_count == 0
     assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+@pytest.mark.parametrize(("stop_city", "section"), [("Bratislava", "ba"), ("Malacky", "ke")])
+@pytest.mark.parametrize("method", ["nearest", "location"])
+async def test_nearest_saves_stop_city_section(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    method: str,
+    stop_city: str,
+    section: str,
+) -> None:
+    """Nearest stops keep the section of their own city, not the chosen one."""
+    nearest = load_json("nearest_ba.json")
+    for stop in nearest["stops"]:
+        stop["city"] = stop_city
+    aioclient_mock.get(f"{BASE_URL}/ke/api/cepo", json=nearest)
+    page = load_fixture("stop_page_ba_83.html")
+    aioclient_mock.get(f"{BASE_URL}/ba/online-zastavkova-tabula?st=83", text=page)
+    # Stop ids are global: the Košice board shows the stop with a city prefix.
+    aioclient_mock.get(
+        f"{BASE_URL}/ke/online-zastavkova-tabula?st=83",
+        text=page.replace('"section":"ba"', '"section":"ke"').replace(
+            '"stopName":"Hod', '"stopName":"Bratislava, Hod'
+        ),
+    )
+
+    result = await start(hass, method, city="ke")
+    if method == "location":
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"location": {"latitude": 48.149, "longitude": 17.107}}
+        )
+    assert result["step_id"] == "pick_stop"
+    options = result["data_schema"].schema["stop_choice"].config["options"]
+    assert options[0]["label"].startswith(f"Hodžovo nám. ({stop_city})")
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"stop_choice": "83"}
+    )
+    url = f"{BASE_URL}/{section}/online-zastavkova-tabula?st=83"
+    assert result["description_placeholders"]["url"] == url
+    result = await finish(hass, result)
+    assert result["data"][CONF_SECTION] == section
+    assert result["result"].unique_id == f"{section}_83_hodzovo"
+
+
+async def test_minute_fields_have_unit(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_http: AiohttpClientMocker
+) -> None:
+    """Minute fields show their unit in the settings and options forms."""
+    result = await start(hass, "stop_id")
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"stop": "83"})
+    options = await hass.config_entries.options.async_init(config_entry.entry_id)
+    for form in (result, options):
+        schema = form["data_schema"].schema
+        assert schema[CONF_WALKING_TIME].config["unit_of_measurement"] == "min"
+        assert schema[CONF_LEAVE_WINDOW].config["unit_of_measurement"] == "min"
+        assert "unit_of_measurement" not in schema[CONF_MAX_DEPARTURES].config
+        assert "unit_of_measurement" not in schema[CONF_DEPARTURE_SENSORS].config
+
+
+def _translations(name: str) -> dict[str, Any]:
+    path = COMPONENT / name if name == "strings.json" else COMPONENT / "translations" / name
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _flatten(data: dict[str, Any], prefix: str = "") -> dict[str, str]:
+    flat: dict[str, str] = {}
+    for key, value in data.items():
+        if isinstance(value, dict):
+            flat.update(_flatten(value, f"{prefix}{key}."))
+        else:
+            flat[f"{prefix}{key}"] = value
+    return flat
+
+
+async def test_city_selector_uses_translations(hass: HomeAssistant) -> None:
+    """City labels come from selector.city, which covers every section in en and sk."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    config = result["data_schema"].schema["city"].config
+    assert config["translation_key"] == "city"
+    assert {"value": "ke", "label": "Košice"} in config["options"]
+    for name in ("en.json", "sk.json"):
+        assert set(_translations(name)["selector"]["city"]["options"]) == set(SECTIONS)
+
+
+async def test_translations_consistent(hass: HomeAssistant) -> None:
+    """strings.json equals en.json; sk has the same keys and placeholders."""
+    en = _flatten(_translations("en.json"))
+    sk = _flatten(_translations("sk.json"))
+    assert _flatten(_translations("strings.json")) == en
+    assert set(sk) == set(en)
+    for key, text in en.items():
+        assert set(re.findall(r"{(\w+)}", sk[key])) == set(re.findall(r"{(\w+)}", text)), key
+
+    result = await start(hass, "search")
+    hint = "config.step.search.data_description.query"
+    for strings in (en, sk):
+        assert ".." not in strings[hint].format(**result["description_placeholders"])

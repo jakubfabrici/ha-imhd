@@ -31,7 +31,7 @@ reference: [README → The main sensor and its attributes](../../README.md#the-m
 | Attribute | Example |
 |---|---|
 | `stop_name`, `stop_id`, `city`, `section` | `Hodžovo nám.`, `83`, `Bratislava`, `ba` |
-| `next_line`, `next_destination`, `next_time`, `next_minutes`, `next_delay`, `next_realtime`, `next_platform`, `next_departure` | `44`, `Koliba`, `08:02`, `4`, `1`, `true`, `A`, `2026-10-05T08:02:10+02:00` |
+| `next_line`, `next_destination`, `next_time`, `next_minutes`, `next_delay`, `next_realtime`, `next_platform`, `next_departure` | `44`, `Koliba`, `08:02`, `4`, `1`, `true`, `A`, `2026-10-05T08:02:00+02:00` |
 | `lines`, `departure_count`, `info`, `connected`, `last_update`, `platforms` | `["42", "44", "47"]`, `6`, `[]`, `true`, … |
 | `departures` | list of departures, see below |
 
@@ -41,11 +41,11 @@ Each item of `departures` is a dict:
 line: "44"                 # always a string; "►" = unnumbered service trip
 destination: Koliba        # headsign, may contain a via stop: "Hrad ► Červený most"
 destination_city: Bratislava
-departure: "2026-10-05T08:02:10+02:00"   # expected, ISO 8601, to the second
+departure: "2026-10-05T08:02:00+02:00"   # expected, ISO 8601, minute shown (as time)
 scheduled: "2026-10-05T08:00:45+02:00"   # timetable
 time: "08:02"              # expected, local HH:MM, as the imhd.sk board shows it
-scheduled_time: "08:01"
-minutes: 4                 # whole minutes until departure (rounded down), >= 0
+scheduled_time: "08:00"    # scheduled, cut to the minute
+minutes: 4                 # whole minutes until the prediction (rounded down), >= 0
 leave_in: 1                # minutes - walking_time
 delay: 1                   # minutes (+ late, - early); null when not vehicle-tracked
 realtime: true             # false = timetable only
@@ -67,7 +67,7 @@ The outputs below are for this board (it is 07:58, walking time 3 minutes):
 
 | # | Line | Destination | Platform | Scheduled | Expected | Minutes | `leave_in` | Delay | Realtime | Vehicle | Low floor | A/C | `text` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 0 | 44 | Koliba | A | 08:01 | 08:02 | 4 | 1 | 1 | yes | 6127, 1 stop away (Kozia) | yes | yes | `4 min` |
+| 0 | 44 | Koliba | A | 08:00 | 08:02 | 4 | 1 | 1 | yes | 6127, 1 stop away (Kozia) | yes | yes | `4 min` |
 | 1 | 42 | Cintorín Vrakuňa | A | 08:04 | 08:04 | 5 | 2 | 0 | yes | 6813, 2 stops away (Sokolská) | yes | yes | `5 min` |
 | 2 | 47 | Hrad ► Červený most | B | 08:05 | 08:08 | 10 | 7 | 3 | yes | 6101, 1 stop away (Kollárovo nám.) | yes | no | `10 min` |
 | 3 | 44 | Koliba | A | 08:11 | 08:11 | 13 | 10 | – | no | – | – | – | `~13 min` |
@@ -84,13 +84,17 @@ The outputs below are for this board (it is 07:58, walking time 3 minutes):
   are lines too.
 - **No `now()` needed for countdowns.** `minutes` and `leave_in` are
   recomputed by the integration every 30 seconds, so a template that uses them
-  re-renders on its own. Use `departure` with `now()` only when you need
-  second precision.
+  re-renders on its own. `departure` is the minute imhd.sk shows (the same
+  as `time`); the `imhd.get_departures` action returns imhd.sk's prediction to
+  the second.
 - **`delay` can be `null`.** Timetable-only departures have no delay (and no
   vehicle, `low_floor`, `previous_stop`, …). Test `d.delay is none` (or use
   `rejectattr('delay', 'none')`) before comparing.
 - **`minutes` is rounded down, `time` is the board's clock time.** Like the
-  imhd.sk board, `4 min` means 4 to 5 minutes. `departure` has the exact time.
+  imhd.sk board, `4 min` means 4 to 5 minutes. `minutes` counts down to
+  imhd.sk's prediction to the second, which can be up to 45 s after the minute
+  shown, so it can differ by one from a countdown computed from `departure`
+  (usually it is one more). Use `minutes` / `leave_in` for the board's values.
 - **Whitespace.** `{%-` and `-%}` remove the whitespace and newlines around a
   tag; use them when the output must be a single line (sensor states are
   limited to 255 characters - put long text into attributes or Markdown cards).
@@ -133,14 +137,17 @@ As a reusable macro for every departure:
 
 Output: `44: 4 min, 42: 5 min, 47: 10 min`
 
-### Exact countdown from the timestamp
+### Countdown from the timestamp
 
 ```jinja
 {%- set dep = state_attr('sensor.hodzovo_departures', 'next_departure') -%}
-{{ time_until(as_datetime(dep)) if dep else 'n/a' }}
+{%- set t = as_datetime(dep) if dep else none -%}
+{{ 'n/a' if t is none else time_until(t) if t > now() else 'now' }}
 ```
 
-Output: `4 minutes`
+Output: `4 minutes`. `next_departure` is the minute shown, up to 45 s before
+imhd.sk's prediction, so it can lie in the past while the bus is still listed
+(`time_until` would then print the timestamp itself).
 
 ### Using a per-departure sensor
 
@@ -318,7 +325,7 @@ Output: `1 min late`
 Output:
 
 ```text
-44 08:01 → 08:02
+44 08:00 → 08:02
 42 08:04
 47 08:05 → 08:08
 ```
@@ -472,7 +479,8 @@ template triggers or template binary sensors.
 | Is anything 3+ minutes late? | `{{ (state_attr('sensor.hodzovo_departures', 'departures') or []) \| rejectattr('delay', 'none') \| selectattr('delay', 'ge', 3) \| list \| count > 0 }}` | `True` |
 | Is the next departure live? | `{{ state_attr('sensor.hodzovo_departures', 'next_realtime') == true }}` | `True` |
 | Is there a service alert? | `{{ is_state('binary_sensor.hodzovo_disruption', 'on') }}` | `False` |
-| Is the data fresh (< 15 min)? | `{{ (now() - as_datetime(state_attr('sensor.hodzovo_departures', 'last_update'))).total_seconds() < 900 }}` | `True` |
+| Is the realtime feed connected? | `{{ is_state('binary_sensor.hodzovo_realtime_connected', 'on') }}` | `True` |
+| Did the shown departures change in the last 15 min? | `{{ (now() - as_datetime(state_attr('sensor.hodzovo_departures', 'last_update'))).total_seconds() < 900 }}` | `True` |
 
 A template **trigger** fires when its template changes from false to true - for
 example "notify me once when a 44 is 10 minutes away":

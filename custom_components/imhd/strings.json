@@ -15,7 +15,7 @@
       },
       "reconfigure": {
         "title": "Change the stop",
-        "description": "Pick a new stop for this entry. The name and filters are kept.",
+        "description": "Pick a new stop for this entry. The name and the other filters are kept; the platform filter is cleared, because platforms belong to a stop.",
         "data": {
           "city": "City",
           "method": "How to find the stop"
@@ -38,7 +38,7 @@
           "query": "Stop name"
         },
         "data_description": {
-          "query": "Part of the stop name, for example {example}."
+          "query": "Part of the stop name, for example {example}"
         }
       },
       "stop_id": {
@@ -180,7 +180,7 @@
         "sn": "Spišská Nová Ves",
         "tatry": "Poprad-Tatry",
         "tn": "Trenčín",
-        "transport": "Slovensko a svet",
+        "transport": "Slovakia & world (transport)",
         "tt": "Trnava",
         "za": "Žilina",
         "zv": "Zvolen"

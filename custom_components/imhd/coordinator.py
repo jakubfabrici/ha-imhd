@@ -28,12 +28,14 @@ from .api import (
 )
 from .const import (
     ALL_PLATFORMS,
+    CONF_DEPARTURE_SENSORS,
     CONF_DIRECTION,
     CONF_EXCLUDE_LINES,
     CONF_LINES,
     CONF_MAX_DEPARTURES,
     CONF_PLATFORMS,
     CONF_WALKING_TIME,
+    DEFAULT_DEPARTURE_SENSORS,
     DEFAULT_MAX_DEPARTURES,
     DOMAIN,
     EMPTY_BOARD_AFTER,
@@ -48,6 +50,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # Seconds to coalesce vehicle / info updates before publishing.
 PUBLISH_DELAY = 1.0
+# imhd.sk sends the info texts (`iText`) right after `infoStart`, and nothing at
+# all for stops without any: wait this long after a (re)connect before taking
+# their absence as "no info". Until then the previous texts are kept.
+INFO_GRACE = 15.0
 
 type ImhdConfigEntry = ConfigEntry[ImhdCoordinator]
 
@@ -134,13 +140,18 @@ class DepartureFilter:
 _VOLATILE_FIELDS = frozenset({"minutes", "leave_in", "text", "departure", "scheduled"})
 
 
-def content_key(data: StopData) -> tuple[Any, ...]:
-    """Return what identifies the published content (minute precision, no countdowns)."""
+def content_key(data: StopData, shown: int | None = None) -> tuple[Any, ...]:
+    """Return what identifies the published content (minute precision, no countdowns).
+
+    Only the first `shown` departures count: no entity shows the others. They are
+    compared in a fixed order: their order follows the countdowns, which the tick
+    publishes (jitter across a minute would otherwise swap rows every few seconds).
+    """
     departures = tuple(
         tuple(item for item in dep.as_dict().items() if item[0] not in _VOLATILE_FIELDS)
-        for dep in data.matching
+        for dep in sorted(data.matching[:shown], key=lambda dep: dep.shown_order)
     )
-    return (departures, tuple(data.info))
+    return (departures, tuple(data.info), data.info_known)
 
 
 class ImhdCoordinator(DataUpdateCoordinator[StopData]):
@@ -166,6 +177,11 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.api = api
         self.stop = stop
         self.filter = DepartureFilter.from_options(entry.options)
+        # Departures shown by entities (main sensor list, departure_N sensors).
+        self._shown = max(
+            self.filter.max_departures,
+            int(entry.options.get(CONF_DEPARTURE_SENSORS, DEFAULT_DEPARTURE_SENSORS)),
+        )
         self.connected = False
         self.has_data = False
         self.rejected: str | None = None
@@ -178,12 +194,16 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self._rows: dict[str, Mapping[str, Any]] = {}
         self._vehicles: dict[str, Mapping[str, Any]] = {}
         self._info: list[str] = []
+        self._info_known = False
+        # True from a disconnect until the next session confirmed the info texts.
+        self._awaiting_info = True
         self._first_result = asyncio.Event()
         self._feed = self._create_feed()
         self._feed_task: asyncio.Task[None] | None = None
         self._unsub_tick: CALLBACK_TYPE | None = None
         self._unsub_publish: CALLBACK_TYPE | None = None
         self._unsub_empty: CALLBACK_TYPE | None = None
+        self._unsub_info: CALLBACK_TYPE | None = None
         self._content: tuple[Any, ...] | None = None
         self.data = StopData(stop=stop)
 
@@ -227,10 +247,10 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
 
     async def async_shutdown(self) -> None:
         """Stop the feed and the tick (entry unload / HA stop)."""
-        for unsub in (self._unsub_tick, self._unsub_publish, self._unsub_empty):
+        for unsub in (self._unsub_tick, self._unsub_publish, self._unsub_empty, self._unsub_info):
             if unsub is not None:
                 unsub()
-        self._unsub_tick = self._unsub_publish = self._unsub_empty = None
+        self._unsub_tick = self._unsub_publish = self._unsub_empty = self._unsub_info = None
         await self._async_stop_feed()
         await super().async_shutdown()
 
@@ -300,6 +320,7 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             departures=matching[: self.filter.max_departures],
             matching=matching,
             info=list(self._info),
+            info_known=self._info_known,
             connected=self.connected,
             last_update=self.last_update,
             reconnects=self.reconnects,
@@ -309,15 +330,16 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
     def _publish(self, *, from_feed: bool = False, force: bool = False) -> None:
         """Publish a fresh snapshot.
 
-        Feed events publish only when the departures or info texts changed
-        (busy boards repeat identical data every few seconds); they also move
-        `last_update`. The 30 s tick and connection changes always publish.
+        Feed events publish only when the shown departures or info texts changed
+        (busy boards repeat identical data every few seconds and keep changing
+        rows no entity shows); they also move `last_update`. The 30 s tick and
+        connection changes always publish.
         """
         if self._unsub_publish is not None:
             self._unsub_publish()
             self._unsub_publish = None
         data = self.build()
-        content = content_key(data)
+        content = content_key(data, self._shown)
         if from_feed:
             if content == self._content and not force:
                 return
@@ -358,6 +380,8 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             self._unsub_empty = async_call_later(
                 self.hass, EMPTY_BOARD_AFTER, self._async_assume_empty_board
             )
+        if self._awaiting_info and self._unsub_info is None:
+            self._unsub_info = async_call_later(self.hass, INFO_GRACE, self._async_info_timeout)
         self._publish()
 
     @callback
@@ -377,6 +401,9 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.connected = False
         if self._disconnected_at is None:
             self._disconnected_at = dt_util.utcnow()
+        # Keep the info texts (no off/on flicker) until the next session confirms them.
+        self._awaiting_info = True
+        self._cancel_info_timeout()
         # Do not keep the entry setup waiting while the feed retries.
         self._first_result.set()
         self._publish()
@@ -418,10 +445,31 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
 
     @callback
     def feed_info(self, payload: Any) -> None:
-        """Store the info / disruption texts (`iText`)."""
-        info = parse_info_texts(payload)
-        if info != self._info:
+        """Store the info / disruption texts (`iText`, a full replacement)."""
+        self._awaiting_info = False
+        self._cancel_info_timeout()
+        self._set_info(parse_info_texts(payload))
+
+    @callback
+    def _async_info_timeout(self, _now: datetime) -> None:
+        """No info texts after a (re)connect: imhd.sk has none for the stop."""
+        self._unsub_info = None
+        if self._awaiting_info:
+            self._awaiting_info = False
+            self._set_info([])
+
+    @callback
+    def _cancel_info_timeout(self) -> None:
+        if self._unsub_info is not None:
+            self._unsub_info()
+            self._unsub_info = None
+
+    @callback
+    def _set_info(self, info: list[str]) -> None:
+        if info != self._info or not self._info_known:
+            _LOGGER.debug("%s: info texts %s", self.name, info)
             self._info = info
+            self._info_known = True
             self._schedule_publish()
 
     @callback

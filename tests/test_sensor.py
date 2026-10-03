@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
+import pytest
 
 from homeassistant.const import (
     ATTR_UNIT_OF_MEASUREMENT,
@@ -28,9 +29,10 @@ from custom_components.imhd.const import (
     DOMAIN,
     DOMAIN as IMHD_DOMAIN,
 )
+from custom_components.imhd.coordinator import INFO_GRACE
 from custom_components.imhd.diagnostics import async_get_config_entry_diagnostics
 
-from .conftest import LABELS, FakeFeed, load_json, sample_tabs, setup_entry
+from .conftest import LABELS, FakeFeed, load_json, row, sample_tabs, setup_entry, tabs
 
 MAIN = "sensor.hodzovo_departures"
 
@@ -40,6 +42,7 @@ async def test_entities_and_attributes(
     config_entry: MockConfigEntry,
     fake_feed: type[FakeFeed],
     mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
 ) -> None:
     """All entities exist with the documented states and attributes."""
     await setup_entry(hass, config_entry)
@@ -117,7 +120,8 @@ async def test_entities_and_attributes(
     assert connected.state == STATE_ON
     assert connected.attributes["reconnects"] == 0
     assert connected.attributes["friendly_name"] == "Hodzovo Realtime connection"
-    assert hass.states.get("binary_sensor.hodzovo_disruption").state == STATE_OFF
+    # Unknown until imhd.sk sends info texts or INFO_GRACE confirms there are none.
+    assert hass.states.get("binary_sensor.hodzovo_disruption").state == STATE_UNKNOWN
 
     [device] = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)
     assert device.identifiers == {(DOMAIN, config_entry.entry_id)}
@@ -129,6 +133,13 @@ async def test_entities_and_attributes(
     assert entity.unique_id == "ba_83_hodzovo_departures"
     connected_entry = er.async_get(hass).async_get("binary_sensor.hodzovo_realtime_connected")
     assert connected_entry.entity_category is er.EntityCategory.DIAGNOSTIC
+
+    for seconds in (INFO_GRACE, 2):  # the grace period, then the coalesced publish
+        freezer.tick(timedelta(seconds=seconds))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+    alert = hass.states.get("binary_sensor.hodzovo_disruption")
+    assert (alert.state, alert.attributes["messages"]) == (STATE_OFF, [])
 
 
 async def test_entity_ids_are_language_independent(
@@ -268,6 +279,38 @@ async def test_countdown_tick(
     assert state.attributes["departure_count"] == 3
 
 
+@pytest.mark.parametrize(
+    ("now", "minutes", "state", "next_departure"),
+    [
+        # 02:50 CEST: the N33 at 02:05:30 CET is 15.5 minutes away, not departed.
+        ("2026-10-25T00:50:00+00:00", 15.5, "15", "2026-10-25T01:05:00+00:00"),
+        # 02:10 CET (second pass): the 44 at 02:20:30 CET is shown 02:20 CET.
+        ("2026-10-25T01:10:00+00:00", 10.5, "10", "2026-10-25T01:20:00+00:00"),
+    ],
+)
+async def test_departures_in_the_repeated_hour(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    *,
+    now: str,
+    minutes: float,
+    state: str,
+    next_departure: str,
+) -> None:
+    """At the end of summer time 02:00-03:00 comes twice: entities use real time."""
+    utc_now = datetime.fromisoformat(now)
+    freezer.move_to(utc_now)
+    fake_feed.initial = [tabs(213, [row("44", minutes, "Koliba", now=utc_now, delay=0)])]
+    await setup_entry(hass, config_entry)
+    assert hass.states.get(MAIN).state == state
+    assert hass.states.get("sensor.hodzovo_next_departure").state == next_departure
+    shown = dt_util.as_local(datetime.fromisoformat(next_departure)).isoformat()
+    assert hass.states.get(MAIN).attributes["next_departure"] == shown
+
+
 async def test_empty_board_and_disruption(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
@@ -371,6 +414,10 @@ async def test_identical_payloads_do_not_churn(
     """10 identical `tabs` 3 s apart cause at most one state change (finding 3)."""
     await setup_entry(hass, config_entry)
     listener = fake_feed.instances[0].listener
+    listener.feed_info([])  # publishes once (the service alert becomes known)
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
     entity_ids = {
         entry.entity_id
         for entry in er.async_entries_for_config_entry(er.async_get(hass), config_entry.entry_id)

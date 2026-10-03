@@ -9,10 +9,10 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.imhd.const import DOMAIN
+from custom_components.imhd.const import BASE_URL, DOMAIN
 from custom_components.imhd.diagnostics import async_get_config_entry_diagnostics
 
-from .conftest import NEAREST_URL, STOP_PAGE_URL, FakeFeed, setup_entry
+from .conftest import NEAREST_URL, STOP_PAGE_URL, FakeFeed, load_json, setup_entry
 
 
 async def call(hass: HomeAssistant, service: str, data: dict) -> dict:
@@ -102,6 +102,23 @@ async def test_find_stops(
 
     with pytest.raises(ServiceValidationError):
         await call(hass, "find_stops", {"city": "Atlantis"})
+
+
+async def test_find_stops_nearest_other_city(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+) -> None:
+    """Nearby stops of another city come with their own section and board link."""
+    mock_http.get(f"{BASE_URL}/ke/api/cepo", json=load_json("nearest_ba.json"))
+    await setup_entry(hass, config_entry)
+    response = await call(
+        hass, "find_stops", {"city": "ke", "latitude": 48.149, "longitude": 17.107}
+    )
+    first = response["stops"][0]
+    assert (first["id"], first["city"], first["section"]) == (83, "Bratislava", "ba")
+    assert first["url"] == "https://imhd.sk/ba/online-zastavkova-tabula?st=83"
 
 
 async def test_find_stops_offline(

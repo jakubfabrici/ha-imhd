@@ -15,7 +15,7 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME
+from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, CONF_NAME, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -86,6 +86,7 @@ _NUMBER_FIELDS: dict[str, tuple[int, int]] = {
     CONF_LEAVE_WINDOW: (0, MAX_LEAVE_WINDOW),
     CONF_DEPARTURE_SENSORS: (0, MAX_DEPARTURE_SENSORS),
 }
+_MINUTE_FIELDS = (CONF_WALKING_TIME, CONF_LEAVE_WINDOW)
 
 
 def make_unique_id(section: str, stop_id: int, name: str) -> str:
@@ -134,15 +135,17 @@ def settings_schema(platforms: list[str], *, with_name: bool) -> vol.Schema:
     for key in (CONF_LINES, CONF_EXCLUDE_LINES, CONF_DIRECTION):
         fields[vol.Optional(key)] = TextSelector(TextSelectorConfig(multiple=True))
     for key, (minimum, maximum) in _NUMBER_FIELDS.items():
-        fields[vol.Required(key, default=DEFAULT_OPTIONS[key])] = NumberSelector(
-            NumberSelectorConfig(min=minimum, max=maximum, step=1, mode=NumberSelectorMode.BOX)
-        )
+        config = NumberSelectorConfig(min=minimum, max=maximum, step=1, mode=NumberSelectorMode.BOX)
+        if key in _MINUTE_FIELDS:
+            config["unit_of_measurement"] = UnitOfTime.MINUTES
+        fields[vol.Required(key, default=DEFAULT_OPTIONS[key])] = NumberSelector(config)
     return vol.Schema(fields)
 
 
 def _city_options() -> list[SelectOptionDict]:
+    """Return the sections sorted by city (labels are translated via selector.city)."""
     return [
-        SelectOptionDict(value=code, label=f"{city} ({code})")
+        SelectOptionDict(value=code, label=city)
         for code, city in sorted(SECTIONS.items(), key=lambda kv: normalize_text(kv[1]))
     ]
 
@@ -215,7 +218,11 @@ class ImhdConfigFlow(ConfigFlow, domain=DOMAIN):
         schema = vol.Schema(
             {
                 vol.Required(CONF_CITY, default=self._section): SelectSelector(
-                    SelectSelectorConfig(options=_city_options(), mode=SelectSelectorMode.DROPDOWN)
+                    SelectSelectorConfig(
+                        options=_city_options(),
+                        translation_key=CONF_CITY,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
                 ),
                 vol.Required(CONF_METHOD, default=METHOD_NEAREST): SelectSelector(
                     SelectSelectorConfig(
@@ -234,6 +241,7 @@ class ImhdConfigFlow(ConfigFlow, domain=DOMAIN):
         except ImhdError as err:
             _LOGGER.debug("Nearest stop lookup failed: %s", err)
             return {"base": "cannot_connect"}
+        # Stops of other cities come with their own city's section.
         return self._set_candidates(stops)
 
     def _set_candidates(self, stops: list[StopInfo]) -> dict[str, str]:

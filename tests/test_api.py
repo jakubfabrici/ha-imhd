@@ -26,7 +26,12 @@ from custom_components.imhd.api import (
     parse_tabs,
     resolve_section,
 )
-from custom_components.imhd.models import countdown_text, minutes_until
+from custom_components.imhd.models import (
+    countdown_text,
+    expected_clock_time,
+    expected_departure,
+    minutes_until,
+)
 
 from .conftest import (
     LABELS,
@@ -81,6 +86,24 @@ def test_parse_nearest() -> None:
     assert first.distance_m == 55
     assert first.describe() == "Hodžovo nám. (Bratislava) · A, B, C, D · 55 m"
     assert first.as_dict()["lat"] == pytest.approx(48.14896)
+    assert {stop.section for stop in stops} == {"ba"}
+
+
+@pytest.mark.parametrize(
+    ("city", "section", "url"),
+    [
+        ("Bratislava", "ba", "https://imhd.sk/ba/online-zastavkova-tabula?st=83"),
+        ("Malacky", "ke", "https://imhd.sk/ke/online-zastavkova-tabula?st=83"),
+        (None, "ke", "https://imhd.sk/ke/online-zastavkova-tabula?st=83"),
+    ],
+)
+def test_parse_nearest_stop_city_section(city: str | None, section: str, url: str) -> None:
+    """Stops of another city get that city's section (else the requested one)."""
+    payload = load_json("nearest_ba.json")
+    for stop in payload["stops"]:
+        stop["city"] = city
+    stop = parse_nearest(payload, "ke", 48.1486, 17.1077)[0]
+    assert (stop.stop_id, stop.section, stop.board_url) == (83, section, url)
 
 
 def test_parse_search() -> None:
@@ -130,6 +153,9 @@ def test_parse_stop_input_invalid(text: str) -> None:
         ("banska bystrica", "bb"),
         ("Poprad", "tatry"),
         ("tatry", "tatry"),
+        ("Slovensko a svet", "transport"),
+        ("Slovakia & world", "transport"),
+        ("slovakia and world", "transport"),
         ("Atlantis", None),
         ("", None),
     ],
@@ -172,7 +198,9 @@ async def test_parse_tabs_real_capture(hass: HomeAssistant) -> None:
     deps = parse_tabs(payload, LABELS, now, stop_id=83, vehicles=vehicles)
 
     assert len(deps) == sum(len(el["tab"]) for el in payload) == 56
-    assert deps == sorted(deps, key=lambda dep: dep.departure)
+    # Sorted by the countdown, then the minute shown (not by the prediction to the second).
+    assert [dep.minutes for dep in deps] == sorted(dep.minutes for dep in deps)
+    assert [dep.expected for dep in deps] == sorted(dep.expected for dep in deps)
     assert {dep.platform for dep in deps} == {"A", "B", "C", "D"}
     assert all(dep.line and dep.destination for dep in deps)
     assert all(dep.low_floor is not None for dep in deps if dep.realtime)
@@ -223,6 +251,86 @@ async def test_parse_tabs_drops_departed_and_foreign(hass: HomeAssistant) -> Non
     ]
     deps = parse_tabs(payload, LABELS, NOW, stop_id=83)
     assert [(dep.line, dep.minutes) for dep in deps] == [("1", 0), ("3", 0)]
+
+
+SAME_MINUTE = [("9", -3), ("9", 2), ("44", 1)]
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "order"),
+    [
+        (10, 12, SAME_MINUTE),
+        (13, 11, SAME_MINUTE),
+        # The 44 and the Dúbravka 9 leave in 2 minutes, the Karlova Ves 9 in 3.
+        (-14, 44, [("9", -3), ("44", 1), ("9", 2)]),
+    ],
+)
+async def test_parse_tabs_same_minute_order(
+    hass: HomeAssistant, first: int, second: int, order: list[tuple[str, int]]
+) -> None:
+    """Sorted by countdown, then shown minute; ties keep their order when predictions jitter."""
+    payload = [
+        tabs(213, [row("44", 3 + first / 60, "Koliba", delay=1, trip=1)]),
+        tabs(214, [row("9", 3 + second / 60, "Karlova Ves", delay=0, trip=2)]),
+        tabs(215, [row("9", 3 + first / 60, "Dúbravka", delay=0, trip=-3)]),
+    ]
+    deps = parse_tabs(payload, LABELS, NOW, stop_id=83)
+    assert [(dep.line, dep.trip_id) for dep in deps] == order
+    assert {dep.as_dict()["time"] for dep in deps} == {"21:03"}
+    assert [dep.minutes for dep in deps] == sorted(dep.minutes for dep in deps)
+
+
+@pytest.mark.parametrize(
+    ("now", "offsets", "expected"),
+    [
+        # End of summer time, 02:55 CEST: 02:05, 02:35 and 03:05 CET are 10-70 min away.
+        (
+            "2026-10-25T00:55:00+00:00",
+            [600, 2400, 4200],
+            [
+                (10, "10 min", "2026-10-25T02:05:00+01:00"),
+                (40, "40 min", "2026-10-25T02:35:00+01:00"),
+                (70, "03:05", "2026-10-25T03:05:00+01:00"),
+            ],
+        ),
+        # 02:00:10 CET (second pass): 02:59:30 CEST left 40 s ago, 02:59:50 CEST 20 s ago.
+        (
+            "2026-10-25T01:00:10+00:00",
+            [-40, -20, 600],
+            [(0, "*", "2026-10-25T02:59:50+02:00"), (10, "10 min", "2026-10-25T02:10:10+01:00")],
+        ),
+        # Start of summer time, 01:50 CET: 03:05 CEST is 15 min away.
+        ("2026-03-29T00:50:00+00:00", [900], [(15, "15 min", "2026-03-29T03:05:00+02:00")]),
+        # 03:00:10 CEST: 01:59:50 CET left 20 s ago (kept), 01:59:30 CET 40 s ago.
+        ("2026-03-29T01:00:10+00:00", [-40, -20], [(0, "*", "2026-03-29T01:59:50+01:00")]),
+    ],
+)
+async def test_parse_tabs_across_dst_changes(
+    hass: HomeAssistant, now: str, offsets: list[int], expected: list[tuple[int, str, str]]
+) -> None:
+    """Countdowns and departed rows use real time, not the local wall clock."""
+    utc_now = datetime.fromisoformat(now)
+    payload = [
+        tabs(213, [row("9", offset / 60, "X", now=utc_now, delay=0, trip=i)])
+        for i, offset in enumerate(offsets)
+    ]
+    deps = parse_tabs(payload, LABELS, dt_util.as_local(utc_now), stop_id=83)
+    assert [(dep.minutes, dep.text, dep.as_dict()["departure"]) for dep in deps] == expected
+
+
+@pytest.mark.parametrize(
+    ("cas", "shown"),
+    [
+        ("2026-10-25T01:20:30+00:00", "2026-10-25T02:20:00+01:00"),  # 02:20:30 CET
+        ("2026-10-25T00:59:50+00:00", "2026-10-25T02:00:00+01:00"),  # 02:59:50 CEST
+        ("2026-10-25T00:20:30+00:00", "2026-10-25T02:20:00+02:00"),  # 02:20:30 CEST
+    ],
+)
+def test_expected_departure_in_the_repeated_hour(hass: HomeAssistant, cas: str, shown: str) -> None:
+    """The shown minute keeps the UTC offset: 02:xx comes twice at the end of summer time."""
+    when = dt_util.as_local(datetime.fromisoformat(cas))
+    assert expected_departure(when).isoformat() == shown
+    assert expected_clock_time(when) == shown[11:16]
 
 
 @pytest.mark.parametrize("payload", [[], {}, None, [{"tab": []}], [{"tab": [{"linka": "1"}]}]])

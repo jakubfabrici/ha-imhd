@@ -41,10 +41,8 @@ views:
               {% else %}
               *No departures at the moment.*
               {% endif %}
-              {% for m in state_attr(s, 'info') or [] %}
-              > <ha-icon icon="mdi:alert"></ha-icon> {{ m }}
-              {% endfor %}
               <sub><ha-icon icon="mdi:access-point"></ha-icon> live · <ha-icon icon="mdi:calendar-clock"></ha-icon> timetable · updated {{ as_timestamp(state_attr(s, 'last_update'), 0) | timestamp_custom('%H:%M') if state_attr(s, 'last_update') else '–' }} · data: imhd.sk</sub>
+          # Service alerts of imhd.sk, shown only while there is one.
           - type: conditional
             conditions:
               - condition: state

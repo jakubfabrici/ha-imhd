@@ -8,20 +8,28 @@
 # Change: the stop ("hodzovo"), the notify action and the imhd.sk link.
 alias: "IMHD: service alert notification"
 description: Notify about imhd.sk service alerts (diversions, outages) for my stop.
+# The sensor is "unavailable" while Home Assistant starts, while the stop is
+# reloaded and during a long feed outage; not_from keeps those moments from
+# sending the alert (or a clear) again.
 triggers:
   - trigger: state
     entity_id: binary_sensor.hodzovo_disruption
     to: "on"
+    not_from: [unavailable, unknown]
     id: alert
   - trigger: state
     entity_id: binary_sensor.hodzovo_disruption
     attribute: messages
-    id: alert
+    id: updated
   - trigger: state
     entity_id: binary_sensor.hodzovo_disruption
     to: "off"
+    not_from: [unavailable, unknown]
     id: cleared
-conditions: []
+conditions:
+  # The messages trigger also fires when the alert starts or the sensor comes
+  # back after a restart; count it only as an update of an ongoing alert.
+  - "{{ trigger.id != 'updated' or (trigger.from_state is not none and trigger.from_state.state == 'on') }}"
 actions:
   - variables:
       messages: "{{ state_attr('binary_sensor.hodzovo_disruption', 'messages') or [] }}"
@@ -29,7 +37,7 @@ actions:
   - choose:
       - conditions:
           - condition: trigger
-            id: alert
+            id: [alert, updated]
           - condition: state
             entity_id: binary_sensor.hodzovo_disruption
             state: "on"

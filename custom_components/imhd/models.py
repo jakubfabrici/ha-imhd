@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import math
 from typing import Any
 import unicodedata
@@ -117,8 +117,22 @@ class Departure:
             text=countdown_text(self.departure, now, realtime=self.realtime),
         )
 
+    @property
+    def expected(self) -> datetime:
+        """Return the departure minute imhd.sk shows (the same as `time`)."""
+        return expected_departure(self.departure)
+
+    @property
+    def shown_order(self) -> tuple[Any, ...]:
+        """Return a sort key: the minute shown, then line and trip.
+
+        Unlike the prediction to the second, it does not change when busy boards
+        move predictions by a few seconds.
+        """
+        return (self.expected.timestamp(), natural_key(self.line), self.trip_id or 0)
+
     def as_dict(self) -> dict[str, Any]:
-        """Return the public (attribute / service response) representation."""
+        """Return the public representation (service responses, to the second)."""
         return {
             "line": self.line,
             "destination": self.destination,
@@ -146,6 +160,14 @@ class Departure:
             "vehicle_type": self.vehicle_type,
         }
 
+    def as_attributes(self) -> dict[str, Any]:
+        """Return the entity attribute representation (minute precision).
+
+        `departure` is the minute shown by imhd.sk (as `time`): busy boards tweak
+        predictions by seconds every few seconds, which must not write new states.
+        """
+        return {**self.as_dict(), "departure": self.expected.isoformat()}
+
 
 @dataclass(slots=True, kw_only=True)
 class StopData:
@@ -155,6 +177,8 @@ class StopData:
     departures: list[Departure] = field(default_factory=list)
     matching: list[Departure] = field(default_factory=list)
     info: list[str] = field(default_factory=list)
+    # False until imhd.sk sent the info texts (or their absence was confirmed).
+    info_known: bool = False
     connected: bool = False
     last_update: datetime | None = None
     reconnects: int = 0
@@ -175,9 +199,18 @@ def board_url(section: str, stop_id: int) -> str:
     return f"{BASE_URL}/{section}/online-zastavkova-tabula?st={stop_id}"
 
 
+def _seconds_until(when: datetime, now: datetime) -> float:
+    """Return the real seconds from `now` to `when`.
+
+    Datetimes of one time zone subtract as wall clock times, an hour off across
+    a DST change.
+    """
+    return (when.astimezone(UTC) - now.astimezone(UTC)).total_seconds()
+
+
 def minutes_until(when: datetime, now: datetime) -> int:
     """Return whole minutes until `when` (rounded down like imhd.sk, never < 0)."""
-    return max(0, math.floor((when - now).total_seconds() / 60))
+    return max(0, math.floor(_seconds_until(when, now) / 60))
 
 
 def countdown_text(when: datetime, now: datetime, *, realtime: bool) -> str:
@@ -185,7 +218,7 @@ def countdown_text(when: datetime, now: datetime, *, realtime: bool) -> str:
 
     Timetable-only departures get the "~" prefix like on imhd.sk.
     """
-    seconds = (when - now).total_seconds()
+    seconds = _seconds_until(when, now)
     if seconds <= 0:
         return "*"
     minutes = int(seconds // 60)
@@ -203,13 +236,20 @@ def clock_time(when: datetime) -> str:
     return when.strftime("%H:%M")
 
 
-def expected_clock_time(when: datetime) -> str:
-    """Return the HH:MM imhd.sk shows for an expected departure (`cas`).
+def expected_departure(when: datetime) -> datetime:
+    """Return the minute imhd.sk shows for an expected departure (`cas`).
 
     imhd.sk predicts departures 15 s early; its board shows cas + 15 s truncated
-    (checked against 1,196 server rendered times).
+    (checked against 1,196 server rendered times). Computed in UTC: local
+    arithmetic drops the DST fold (02:xx comes twice at the end of summer time).
     """
-    return clock_time(when + PREDICTION_LEAD)
+    shown = (when.astimezone(UTC) + PREDICTION_LEAD).replace(second=0, microsecond=0)
+    return shown.astimezone(when.tzinfo)
+
+
+def expected_clock_time(when: datetime) -> str:
+    """Return the HH:MM imhd.sk shows for an expected departure (`cas`)."""
+    return clock_time(expected_departure(when))
 
 
 def natural_key(text: str) -> tuple[Any, ...]:

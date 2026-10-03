@@ -112,6 +112,19 @@ Behaviour in detail:
 
 - **Partial updates are merged.** imhd.sk re-sends only the platforms that
   changed, and the integration keeps the latest data of every platform.
+- **Few state changes.** On busy stops imhd.sk sends new data every few
+  seconds, often only predictions moved by a few seconds. The entities use the
+  minute the imhd.sk board displays, so such shifts write nothing. Departures
+  are listed by their countdown, like on the imhd.sk board; when a shift only
+  changes that order, the new order comes with the next countdown update.
+  Changes to rows that no entity shows write nothing either. The *Next
+  departure*, *Next line* and *Delay* sensors write about once a minute for the
+  countdown, plus real changes such as a delay or another line. The main
+  sensor and the *Departure N* sensors also carry each vehicle's position
+  (`previous_stop`, `stops_away`) and details, so they also write when a shown
+  vehicle passes a stop, every few seconds on busy stops: at *Hodžovo nám.* the
+  main sensor's state changed 3 times in 2 minutes, but it wrote 25 states
+  (recorder rows, without the unrecorded list).
 - **Countdowns keep running.** Every 30 seconds `minutes`, `leave_in` and the
   board `text` are recomputed from the expected departure time.
 - **Departed rows disappear.** Once the expected time is reached, a
@@ -268,15 +281,22 @@ search for **IMHD.sk Departures**.
    ![Config flow: city and method](docs/images/config-flow-city.png)
 
 2. **Pick the stop.** Choose from the list. It shows the name and city, and for
-   nearby stops the platforms and the distance. If you entered a stop ID or
-   link, this step is skipped.
+   nearby stops the platforms and the distance. A name search always shows the
+   list, even with a single hit, so you can check the stop. If you entered a
+   stop ID or link, this step is skipped.
+
+   The nearest stops can belong to another city than the one you picked, for
+   example near a city boundary. They are listed with their city name and saved
+   with their own city's section and board link. The city you picked is used
+   only for stops outside the imhd.sk cities, such as regional stops in
+   Malacky.
 
    ![Config flow: pick the stop](docs/images/config-flow-stop.png)
 
 3. **Settings.** Set the name, platforms, lines, excluded lines, direction,
-   number of departures, walking time, time-to-leave window and the number of
-   per-departure sensors. These are the same options as in YAML. The form
-   links to the stop's imhd.sk board so you can compare.
+   number of departures, walking time and time-to-leave window (in minutes)
+   and the number of per-departure sensors. These are the same options as in
+   YAML. The form links to the stop's imhd.sk board so you can compare.
 
    ![Config flow: settings](docs/images/config-flow-settings.png)
 
@@ -332,7 +352,8 @@ Stops used in this documentation:
 ## Supported cities
 
 `city` accepts the section code or the city name. Case and diacritics are
-ignored, and *Poprad-Tatry* also matches `poprad` or `tatry`.
+ignored, *Poprad-Tatry* also matches `poprad` or `tatry`, and `transport`
+also matches *Slovensko a svet* or *Slovakia & world*.
 
 | Code | City / region | Code | City / region |
 |---|---|---|---|
@@ -346,7 +367,7 @@ ignored, and *Poprad-Tatry* also matches `poprad` or `tatry`.
 | `nz` | Nové Zámky | `tn` | Trenčín |
 | `pb` | Považská Bystrica | `tt` | Trnava |
 | `pd` | Prievidza | `za` | Žilina |
-| `transport` | Slovensko a svet (country-wide) | `zv` | Zvolen |
+| `transport` | Slovakia & world (*Slovensko a svet*, country-wide) | `zv` | Zvolen |
 
 **Realtime or timetable?** The integration shows what the imhd.sk board shows.
 Departures that imhd.sk ties to a tracked vehicle have `realtime: true`, a
@@ -374,11 +395,11 @@ templates work everywhere.
 | Entity id | Display name (en / sk) | State | Attributes |
 |---|---|---|---|
 | `sensor.hodzovo_departures` | Departures / Odchody | Minutes until the next departure (`min`), or `unknown` when there is none | The full departure list and summary fields, see [below](#the-main-sensor-and-its-attributes) |
-| `sensor.hodzovo_next_departure` | Next departure / Najbližší odchod | Timestamp of the next departure (shown as "in 4 minutes") | `line`, `destination`, `time`, `departure`, `minutes`, `delay`, `platform` |
+| `sensor.hodzovo_next_departure` | Next departure / Najbližší odchod | Timestamp of the next departure: the minute imhd.sk shows, the same as `time` (shown as "in 4 minutes"). imhd.sk's prediction can be up to 45 s later, so this can lie in the past while the departure is still listed, and a time trigger on it can fire up to 45 s early. Use `minutes` for countdowns. | `line`, `destination`, `time`, `departure`, `minutes`, `delay`, `platform` |
 | `sensor.hodzovo_next_line` | Next line / Najbližšia linka | Line of the next departure, for example `44` | same as above |
 | `sensor.hodzovo_delay` | Delay / Meškanie | Delay of the next departure in minutes, or `unknown` when it isn't vehicle-tracked | same as above |
 | `sensor.hodzovo_departure_1` … `_N` | Departure 1 … N / Odchod 1 … N | Minutes until the N-th departure | All [departure fields](#departure-fields) of that departure (none when there is no N-th departure). N = `departure_sensors`. |
-| `binary_sensor.hodzovo_time_to_leave` | Time to leave / Čas vyraziť | `on` while `0 ≤ leave_in ≤ time_to_leave_window` for the next catchable departure | `line`, `destination`, `departure`, `leave_in` |
+| `binary_sensor.hodzovo_time_to_leave` | Time to leave / Čas vyraziť | `on` while `0 ≤ leave_in ≤ time_to_leave_window` for the next catchable departure | `line`, `destination`, `departure`, `minutes`, `leave_in` |
 | `binary_sensor.hodzovo_realtime_connected` | Realtime connection / Spojenie v reálnom čase | `on` while connected to the imhd.sk feed (*connectivity*, diagnostic) | `reconnects` |
 | `binary_sensor.hodzovo_disruption` | Service alert / Mimoriadnosť | `on` while imhd.sk publishes info texts for the stop (*problem*) | `messages` |
 
@@ -393,6 +414,25 @@ templates work everywhere.
   connection* is always available, because it reports the connection itself.
 - `reconnects` counts the reconnections since the stop was loaded. The time of
   the last message from imhd.sk is in the diagnostics download.
+- *Next departure* is imhd.sk's prediction + 15 s, cut to the minute (for
+  example `2026-10-05T08:02:00+02:00`), so it always has the same `HH:MM` as
+  `time`. It doesn't move when imhd.sk shifts a prediction by a few seconds, so
+  the activity log has no *Next departure changed to …* entries for such
+  shifts, and an entities card with `format: time` shows exactly `time`.
+- *Service alert* keeps the alert and its `messages` while the feed is
+  disconnected and after it reconnects. imhd.sk sends the info texts right
+  after connecting, and nothing at all when there are none: if no info text
+  arrives within 15 s of a (re)connect, the alert ends (`off`). An empty info
+  text ends it at once.
+- After a Home Assistant restart or a reload of the stop, *Service alert*
+  restores its last state and `messages` and keeps them until imhd.sk confirms
+  or replaces them, at most 15 s. An active alert goes `on` → `unavailable` →
+  `on`, never `on` → `off` → `on`. Only a newly added stop, or a stop just
+  changed with *Reconfigure*, has nothing to restore and is `unknown` for up
+  to 15 s. The `unavailable` step during a reload
+  comes from Home Assistant, so automations should use
+  `not_from: [unavailable, unknown]`, see
+  [Service-alert notification](#service-alert-notification).
 - Info texts were seen only for Bratislava stops. They appear to be dispatch
   messages of the Bratislava transport company (DPB). A message that imhd.sk
   sends in Slovak and English becomes one message with one language per line.
@@ -418,10 +458,10 @@ departures:
   - line: "44"
     destination: Koliba
     destination_city: Bratislava
-    departure: "2026-10-05T08:02:10+02:00"
+    departure: "2026-10-05T08:02:00+02:00"
     scheduled: "2026-10-05T08:00:45+02:00"
     time: "08:02"
-    scheduled_time: "08:01"
+    scheduled_time: "08:00"
     minutes: 4
     leave_in: 1
     delay: 1
@@ -478,7 +518,7 @@ departures:
 next_line: "44"
 next_destination: Koliba
 next_time: "08:02"
-next_departure: "2026-10-05T08:02:10+02:00"
+next_departure: "2026-10-05T08:02:00+02:00"
 next_minutes: 4
 next_delay: 1
 next_realtime: true
@@ -503,32 +543,35 @@ friendly_name: Hodzovo Departures
 | `stop_name`, `stop_id` | string, int | Stop name as shown on imhd.sk, and its ID. |
 | `city`, `section` | string | City of the stop and the imhd.sk section code. |
 | `platforms` | list of strings | Platforms covered: your platform filter as entered, or all platforms of the stop. |
-| `departures` | list | Up to `max_departures` departures that pass the filters and walking time, sorted by expected departure. See [Departure fields](#departure-fields). |
+| `departures` | list | Up to `max_departures` departures that pass the filters and walking time, sorted like the imhd.sk board: by `minutes`, then by the minute imhd.sk shows (`time`), then by line. See [Departure fields](#departure-fields). |
 | `next_line`, `next_destination`, `next_time`, `next_departure`, `next_minutes`, `next_delay`, `next_realtime`, `next_platform` | various | Shortcuts for the first departure (`line`, `destination`, `time`, `departure`, `minutes`, `delay`, `realtime`, `platform`). All `null` when there is none. |
 | `lines` | list of strings | Unique lines in `departures`, sorted with numbers in numeric order. |
 | `departure_count` | int | Number of items in `departures`. |
 | `info` | list of strings | Current imhd.sk info and service-alert texts. |
 | `connected` | bool | Whether the realtime feed is connected. |
-| `last_update` | ISO timestamp / null | When the departures or info texts last changed. Identical repeated messages from imhd.sk don't move it. |
+| `last_update` | ISO timestamp / null | When the departures shown by the entities or the info texts last changed. Shown are the first `max_departures` or `departure_sensors` departures, whichever is more. Identical repeated messages from imhd.sk, prediction shifts of a few seconds and changes to later departures don't move it. |
 
-`departures` and `info` aren't saved in the recorder (history database), which
-keeps it small. They are always in the current state.
+`departures`, `info`, `next_minutes` (a copy of the state) and `last_update`
+aren't saved in the recorder (history database), which keeps it small. They are
+always in the current state.
 
 ### Departure fields
 
 Each item of `departures` has these keys. So do the attributes of the
-`Departure N` sensors and the items in the `imhd.get_departures` response.
+`Departure N` sensors and the items in the `imhd.get_departures` response. In
+that response, and in the diagnostics, `departure` is imhd.sk's prediction to
+the second.
 
 | Key | Type | Example | Description |
 |---|---|---|---|
 | `line` | string | `"44"` | Line, always a string (`"9"`, `"X13"`, `"N53"`). `"►"` is an unnumbered service trip, such as a depot run. |
 | `destination` | string | `Hrad ► Červený most` | Headsign as shown on the vehicle. It can include a "via" stop after `►`. Falls back to the terminal stop. |
 | `destination_city` | string / null | `Bratislava` | Town of the terminal stop. |
-| `departure` | ISO timestamp | `2026-10-05T08:02:10+02:00` | Expected departure, in Home Assistant's time zone, to the second. For vehicle-tracked departures this is imhd.sk's prediction. Otherwise it is the scheduled time. |
+| `departure` | ISO timestamp | `2026-10-05T08:02:00+02:00` | Expected departure as the minute imhd.sk shows (the same as `time`), in Home Assistant's time zone. For vehicle-tracked departures it comes from imhd.sk's prediction. Otherwise it is the scheduled time. |
 | `scheduled` | ISO timestamp / null | `2026-10-05T08:00:45+02:00` | Scheduled (timetable) departure. |
-| `time` | `HH:MM` | `08:02` | Expected time as the imhd.sk board shows it (imhd.sk predicts 15 s early, so `departure` + 15 s, cut to the minute). |
-| `scheduled_time` | `HH:MM` / null | `08:01` | `scheduled` cut to the minute, like imhd.sk. |
-| `minutes` | int ≥ 0 | `4` | Whole minutes until `departure`, **rounded down** like on the imhd.sk board. Recomputed every 30 s. |
+| `time` | `HH:MM` | `08:02` | Expected time as the imhd.sk board shows it. imhd.sk predicts 15 s early, so this is the prediction + 15 s, cut to the minute. |
+| `scheduled_time` | `HH:MM` / null | `08:00` | `scheduled` cut to the minute, like imhd.sk. |
+| `minutes` | int ≥ 0 | `4` | Whole minutes until imhd.sk's prediction to the second, **rounded down** like on the imhd.sk board. Recomputed every 30 s. It can differ by one from a countdown computed from `departure` (usually it is one more), because the prediction can be up to 45 s after the minute shown. |
 | `leave_in` | int | `1` | `minutes - walking_time`: minutes until you have to leave. Departures with a negative value are hidden when `walking_time` is above 0. |
 | `delay` | int / null | `1` | imhd.sk's delay in whole minutes. Positive is late, negative is early, 0 is on time. `null` when the departure isn't vehicle-tracked. |
 | `realtime` | bool | `true` | `true` when imhd.sk ties the departure to a tracked vehicle, including a vehicle that is assigned but hasn't started the trip yet. `false` for timetable-only departures. |
@@ -791,14 +834,17 @@ The next {{ a.line }} to {{ a.destination }} {{ 'is leaving now' if a.minutes ==
 
 Output: `The next 44 to Koliba leaves in 4 minutes, running 1 minute late. After that, the 42 to Cintorín Vrakuňa in 5 minutes.`
 
-**15. Exact countdown from the timestamp**
+**15. Countdown from the timestamp**
 
 ```jinja
 {%- set dep = state_attr('sensor.hodzovo_departures', 'next_departure') -%}
-{{ time_until(as_datetime(dep)) if dep else 'n/a' }}
+{%- set t = as_datetime(dep) if dep else none -%}
+{{ 'n/a' if t is none else time_until(t) if t > now() else 'now' }}
 ```
 
-Output: `4 minutes`
+Output: `4 minutes`. `next_departure` is the minute shown, up to 45 s before
+imhd.sk's prediction, so it can lie in the past while the bus is still listed;
+`time_until` would then print the timestamp itself, hence the `now` branch.
 
 **16. Lines currently served**
 
@@ -873,7 +919,9 @@ All examples are in [`examples/dashboards/`](examples/dashboards/). Add them wit
 **Edit dashboard → Add card → Manual** and paste the YAML. Everything except the
 Mushroom example uses core cards only. A complete view that combines them is in
 [`full_view.yaml`](examples/dashboards/full_view.yaml); paste it into a new
-dashboard's raw configuration editor.
+dashboard's raw configuration editor. In that view, service alerts appear only
+in the conditional *Service alert* card, and its departure board leaves them
+out. The standalone Markdown departure board below shows them itself.
 
 ### Markdown departure board
 
@@ -1039,6 +1087,7 @@ This automation announces the next departure on a speaker on weekday mornings
 ```yaml
 alias: "IMHD: announce time to leave"
 triggers:
+  # from: "off" keeps a restart or reload (unavailable -> on) silent.
   - trigger: state
     entity_id: binary_sensor.hodzovo_time_to_leave
     from: "off"
@@ -1072,8 +1121,9 @@ and the singular/plural.
 
 This automation notifies you when imhd.sk publishes an alert for the stop. The
 full example ([`disruption_notify.yaml`](examples/automations/disruption_notify.yaml))
-also updates the notification when the text changes and clears it when the
-alert ends. Here is the core of it:
+also ignores restarts, reloads and feed outages, sends one notification per new
+alert, updates it when the text changes and clears it when the alert ends. Here
+is the core of it:
 
 ```yaml
 alias: "IMHD: service alert notification"
@@ -1081,6 +1131,8 @@ triggers:
   - trigger: state
     entity_id: binary_sensor.hodzovo_disruption
     to: "on"
+    # Don't notify again after a restart or reload (unavailable -> on).
+    not_from: [unavailable, unknown]
 conditions: []
 actions:
   - action: notify.mobile_app_my_phone
@@ -1101,7 +1153,8 @@ mode: queued
 Returns the departures of a configured stop, for scripts, voice assistants
 and LLM tools. It searches every departure imhd.sk currently sends for the stop
 that passes the stop's own filters and walking time, so it can return more than
-`max_departures`. The countdowns are computed when the action runs.
+`max_departures`. The countdowns are computed when the action runs. Unlike in
+the entity attributes, `departure` is imhd.sk's prediction to the second.
 
 | Field | Required | Description |
 |---|---|---|
@@ -1205,7 +1258,7 @@ Finds stops by name or near a location. It doesn't need a configured stop.
 |---|---|---|
 | `city` | yes | Section code or city name (`ba`, `Košice`, …). |
 | `query` | no | Part of the stop name. When it is set, stops are searched by name with the imhd.sk site search, which accepts partial words and doesn't need accents. |
-| `latitude`, `longitude` | no | Point to search around when `query` is empty. Defaults to your Home Assistant home location. Returns the 5 nearest stops. |
+| `latitude`, `longitude` | no | Point to search around when `query` is empty. Defaults to your Home Assistant home location. Returns the 5 nearest stops. Stops of another city come with their own city's `section` and `url`, as in the config flow. |
 
 Search by name:
 
@@ -1300,6 +1353,13 @@ and each row a coloured line badge, the destination and a countdown that turns
 yellow under 15 and green under 5 minutes. It needs only the MQTT integration,
 with no pyscript or add-on.
 
+The plate can only draw the characters its font has. The default openHASP font
+has all Slovak letters but not `►`, `·` or `…`, so the automation shows `►` as
+`>`, uses `•` in the header and shortens long destinations after the last whole
+word with `...` (22 characters at the default 16 px font). Custom fonts must
+contain the Slovak letters, see the
+[openHASP example's README](examples/openhasp/README.md).
+
 ![Simulated preview of the openHASP departure board](docs/images/openhasp.png)
 
 *Simulated preview of `pages.jsonl` filled with the example data. It is not a
@@ -1361,20 +1421,22 @@ The stop has no platform labels on imhd.sk (Košice, Žilina and many other
 cities). Use these ids in the `platforms` filter. The settings form lists them.
 
 **The data looks stale.**
-Look at `last_update` on the main sensor. imhd.sk sends only changes. The
-countdown is still recomputed every 30 seconds, and the integration reconnects
-by itself when a stop with departures stays silent for 15 minutes. A quiet stop
-can legitimately send nothing for hours at night. This template binary sensor
-warns you when the data is old:
+Look at `binary_sensor.hodzovo_realtime_connected` first. imhd.sk sends only
+changes. The countdown is still recomputed every 30 seconds, and the
+integration reconnects by itself when a stop with departures stays silent for
+15 minutes. A quiet stop can legitimately send nothing for hours at night.
+`last_update` on the main sensor is the last change of the shown departures,
+not of the feed: at a quiet or timetable-only stop it can be old while the
+connection is fine. This template binary sensor warns you when the feed has
+been down for 5 minutes:
 
 ```yaml
 template:
   - binary_sensor:
-      - name: "Hodzovo data stale"
+      - name: "Hodzovo feed down"
         device_class: problem
-        state: >
-          {% set u = state_attr('sensor.hodzovo_departures', 'last_update') %}
-          {{ u is none or (now() - as_datetime(u)).total_seconds() > 900 }}
+        delay_on: "00:05:00"
+        state: "{{ not is_state('binary_sensor.hodzovo_realtime_connected', 'on') }}"
 ```
 
 **A departure that imhd.sk shows is missing.**
@@ -1391,8 +1453,20 @@ An unnumbered service trip, such as a vehicle going to the depot. Hide it with
 
 **The minutes differ by one from another app.**
 `minutes` is rounded down, like the imhd.sk board: `4 min` means 4 to 5
-minutes. `time` is the clock time imhd.sk shows, and `departure` holds the
-exact expected time.
+minutes. `time`, and `departure` in the attributes, are the minute imhd.sk
+shows. `minutes` counts down to imhd.sk's prediction to the second, which can
+be up to 45 s after the minute shown (or up to 15 s before it). So `minutes`
+can differ by one from a countdown computed from `departure`, usually it is
+one more. Use `minutes` and `leave_in` as the board's values.
+`imhd.get_departures` returns the prediction to the second.
+
+**The integration shows a placeholder instead of its icon.**
+The integration ships its own brand icon in `custom_components/imhd/brand/`
+(`icon.png` and `icon@2x.png`). Home Assistant versions that load brand images
+from custom integrations (2026.9 does, 2026.2 doesn't) show it on the
+integrations page, the device page and in the config flow. Older versions show
+the placeholder until the integration is added to
+[home-assistant/brands](https://github.com/home-assistant/brands).
 
 **My entity ids are different from the examples.**
 Entity ids come from the stop's name. A stop added without a name is named
@@ -1489,3 +1563,9 @@ and attach diagnostics to bug reports.
 
 [MIT](LICENSE) © jakubfabrici. The code is MIT-licensed. The departure data is
 © imhd.sk and isn't covered by this license.
+
+Icon: "bus-clock" from
+[Material Design Icons](https://pictogrammers.com/library/mdi/) (Pictogrammers,
+`@mdi/svg`; originally Google Material "departure_board"),
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Recoloured
+(`#E94560`) and rasterized.

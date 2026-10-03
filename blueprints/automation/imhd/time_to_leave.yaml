@@ -8,10 +8,10 @@ blueprint:
 
 
     The message can use these variables: `line`, `destination`, `departure`
-    (ISO timestamp), `departure_time` (HH:MM, rounded to the nearest minute
-    like the integration's `time`), `leave_in` (minutes until you have to
-    leave), `minutes` (whole minutes until the departure, rounded down) and
-    `stop` (the stop / device name).
+    (ISO timestamp of the minute imhd.sk shows), `departure_time` (that minute
+    as HH:MM, the same as the integration's `time`), `leave_in` (minutes until
+    you have to leave), `minutes` (whole minutes until the departure, rounded
+    down like on the imhd.sk board) and `stop` (the stop / device name).
 
 
     Tip: the sensor follows the *next* departure the stop's filters allow. If
@@ -164,16 +164,17 @@ variables:
   destination: "{{ state_attr(leave_sensor, 'destination') or '' }}"
   departure: "{{ state_attr(leave_sensor, 'departure') or '' }}"
   departure_time: >-
-    {{ (as_timestamp(departure, 0) + 30) | timestamp_custom('%H:%M') if departure else '' }}
+    {{ as_timestamp(departure, 0) | timestamp_custom('%H:%M') if departure else '' }}
   leave_in: "{{ state_attr(leave_sensor, 'leave_in') | int(0) }}"
-  minutes: >-
-    {{ [((as_timestamp(departure, 0) - as_timestamp(now())) / 60) | round(0, 'floor') | int, 0]
-       | max if departure else 0 }}
+  # The sensor's own countdown: `departure` is cut to the minute, so a
+  # countdown computed from it can be one off.
+  minutes: "{{ state_attr(leave_sensor, 'minutes') | int(0) }}"
   stop: >-
     {{ device_attr(device_id(leave_sensor), 'name_by_user')
        or device_attr(device_id(leave_sensor), 'name') or 'the stop' }}
 
 triggers:
+  # from: "off" keeps a restart or reload (unavailable -> on) silent.
   - trigger: state
     entity_id: !input leave_sensor
     from: "off"

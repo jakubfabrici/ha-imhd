@@ -25,7 +25,7 @@ variables:
   departures_sensor: sensor.hodzovo_departures
   # Optional: the service-alert binary sensor of the same stop ("" to ignore).
   disruption_sensor: binary_sensor.hodzovo_disruption
-  # Header sub-title; leave "" to show "<city> · <lines>".
+  # Header sub-title; leave "" to show "<city> • <lines>".
   subtitle: ""
   # --------------------------------------------------------------------------
 
@@ -54,11 +54,15 @@ actions:
       commands: >-
         {%- set s = departures_sensor -%}
         {%- set ns = namespace(cmds=[]) -%}
+        {#- The plate's built-in font has the Slovak letters but no "►", "·" or
+            "…", so ">", "•" and "..." are sent instead. 22 characters fit the
+            direction column at text_font 16. -#}
+        {%- set max_len = 22 -%}
 
         {#- header -#}
         {%- set title = state_attr(s, 'stop_name') or state_attr(s, 'friendly_name') or 'Departures' -%}
-        {%- set lines = (state_attr(s, 'lines') or []) | join(', ') -%}
-        {%- set sub = subtitle if subtitle else (state_attr(s, 'city') or '') ~ (' · ' ~ lines if lines else '') -%}
+        {%- set lines = (state_attr(s, 'lines') or []) | map('replace', '►', '>') | join(', ') -%}
+        {%- set sub = subtitle if subtitle else (state_attr(s, 'city') or '') ~ (' • ' ~ lines if lines else '') -%}
         {%- set ns.cmds = ns.cmds + [['p1b2.text', title], ['p1b3.text', sub]] -%}
 
         {#- rows -#}
@@ -69,10 +73,17 @@ actions:
           {%- if i < deps | count -%}
             {%- set d = deps[i] -%}
             {%- set m = d.minutes | int(0) -%}
+            {#- Shorten a long destination after the last whole word. -#}
+            {%- set dest = (d.destination or '') | replace('►', '>') -%}
+            {%- if dest | length > max_len -%}
+              {%- set cut = dest[:max_len + 1] -%}
+              {%- set cut = cut[:cut.rfind(' ')] if ' ' in cut else cut[:max_len] -%}
+              {%- set dest = cut.rstrip(' >-,.') ~ '...' -%}
+            {%- endif -%}
             {%- set ns.cmds = ns.cmds + [
-                [badge ~ '.text', d.line | string],
+                [badge ~ '.text', d.line | string | replace('►', '>')],
                 [badge ~ '.hidden', '0'],
-                [dirn ~ '.text', (d.destination or '')[:18]],
+                [dirn ~ '.text', dest],
                 [tm ~ '.text', (m ~ 'min') if m < 60 else d.time],
                 [tm ~ '.text_color', '#00FF88' if m < 5 else ('#FFCC00' if m < 15 else '#FFFFFF')]
               ] -%}

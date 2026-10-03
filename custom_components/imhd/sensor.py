@@ -41,11 +41,11 @@ def _main_attributes(coordinator: ImhdCoordinator, data: StopData) -> dict[str, 
         "city": stop.city_name,
         "section": stop.section,
         "platforms": coordinator.platforms,
-        "departures": [dep.as_dict() for dep in data.departures],
+        "departures": [dep.as_attributes() for dep in data.departures],
         "next_line": nxt.line if nxt else None,
         "next_destination": nxt.destination if nxt else None,
         "next_time": nxt.as_dict()["time"] if nxt else None,
-        "next_departure": _iso(nxt.departure) if nxt else None,
+        "next_departure": nxt.expected.isoformat() if nxt else None,
         "next_minutes": nxt.minutes if nxt else None,
         "next_delay": nxt.delay if nxt else None,
         "next_realtime": nxt.realtime if nxt else None,
@@ -62,7 +62,7 @@ def _next_attributes(dep: Departure | None) -> dict[str, Any]:
     """Return the short attribute set of the next departure."""
     if dep is None:
         return {}
-    full = dep.as_dict()
+    full = dep.as_attributes()
     keys = ("line", "destination", "time", "departure", "minutes", "delay", "platform")
     return {key: full[key] for key in keys}
 
@@ -90,7 +90,8 @@ SENSORS: tuple[ImhdSensorDescription, ...] = (
         key="next_departure",
         translation_key="next_departure",
         device_class=SensorDeviceClass.TIMESTAMP,
-        value_fn=lambda data: data.next.departure if data.next else None,
+        # The minute shown by imhd.sk (as `time`), not the second-level prediction.
+        value_fn=lambda data: data.next.expected if data.next else None,
     ),
     ImhdSensorDescription(
         key="next_line",
@@ -138,7 +139,8 @@ class ImhdSensor(ImhdEntity, SensorEntity):
 
     entity_description: ImhdSensorDescription
     _entity_id_format = ENTITY_ID_FORMAT
-    _unrecorded_attributes = frozenset({"departures", "info"})
+    # Large or frequently changing (next_minutes repeats the state).
+    _unrecorded_attributes = frozenset({"departures", "info", "last_update", "next_minutes"})
 
     def __init__(self, coordinator: ImhdCoordinator, description: ImhdSensorDescription) -> None:
         """Initialize the sensor."""
@@ -184,4 +186,4 @@ class ImhdDepartureSensor(ImhdEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return all fields of the departure."""
-        return dep.as_dict() if (dep := self._departure) else {}
+        return dep.as_attributes() if (dep := self._departure) else {}

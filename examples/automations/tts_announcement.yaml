@@ -12,6 +12,7 @@ description: >-
   1 minute late. After that, the 42 to Cintorín Vrakuňa in 6 minutes."
 triggers:
   # Fires when it is time to walk to the stop (walking_time + window).
+  # from: "off" keeps a restart or reload (unavailable -> on) silent.
   - trigger: state
     entity_id: binary_sensor.hodzovo_time_to_leave
     from: "off"
