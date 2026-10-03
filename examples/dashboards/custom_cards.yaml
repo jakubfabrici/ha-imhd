@@ -1,0 +1,83 @@
+# Optional examples that need custom cards from HACS:
+#   * Mushroom - https://github.com/piitaya/lovelace-mushroom
+# They are NOT used by full_view.yaml, which sticks to core cards.
+# Replace "hodzovo" with the name of your stop.
+type: vertical-stack
+cards:
+  # Status chips: live/offline and a service-alert chip that only appears
+  # when imhd.sk publishes an alert for this stop.
+  - type: custom:mushroom-chips-card
+    chips:
+      - type: template
+        entity: binary_sensor.hodzovo_realtime_connected
+        icon: mdi:access-point
+        icon_color: "{{ 'green' if is_state(entity, 'on') else 'red' }}"
+        content: "{{ 'Live' if is_state(entity, 'on') else 'Offline' }}"
+      - type: template
+        entity: sensor.hodzovo_departures
+        icon: mdi:bus-multiple
+        content: "{{ (state_attr(entity, 'lines') or []) | join(' · ') }}"
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: binary_sensor.hodzovo_disruption
+            state: "on"
+        chip:
+          type: template
+          entity: binary_sensor.hodzovo_disruption
+          icon: mdi:alert
+          icon_color: orange
+          content: Service alert
+          tap_action:
+            action: more-info
+
+  # Next departure: colour turns amber under 15 min and red under 5 min.
+  - type: custom:mushroom-template-card
+    entity: sensor.hodzovo_departures
+    primary: >
+      {% if state_attr(entity, 'next_line') %}
+        {{ state_attr(entity, 'next_line') }} → {{ state_attr(entity, 'next_destination') }}
+      {% else %}
+        No departures
+      {% endif %}
+    secondary: >
+      {% set m = state_attr(entity, 'next_minutes') %}
+      {% set d = state_attr(entity, 'next_delay') %}
+      {% if m is not none %}
+        {{ 'now' if m == 0 else 'in ' ~ m ~ ' min' }} · {{ state_attr(entity, 'next_time') }}
+        {%- if d is not none and d > 0 %} · +{{ d }} min{% endif %}
+        {%- if state_attr(entity, 'next_platform') %} · platform {{ state_attr(entity, 'next_platform') }}{% endif %}
+      {% endif %}
+    icon: mdi:bus-clock
+    icon_color: >
+      {% set m = state_attr(entity, 'next_minutes') %}
+      {% if m is none %}grey{% elif m < 5 %}red{% elif m < 15 %}amber{% else %}green{% endif %}
+    badge_icon: "{{ 'mdi:access-point' if state_attr(entity, 'next_realtime') else '' }}"
+    badge_color: green
+    tap_action:
+      action: more-info
+
+  # One compact row per upcoming departure, using the per-departure sensors.
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-template-card
+        entity: sensor.hodzovo_departure_1
+        primary: "{{ state_attr(entity, 'line') or '–' }}"
+        secondary: "{{ states(entity) }} min"
+        icon: mdi:numeric-1-circle
+        icon_color: "{{ 'green' if state_attr(entity, 'realtime') else 'grey' }}"
+        layout: vertical
+      - type: custom:mushroom-template-card
+        entity: sensor.hodzovo_departure_2
+        primary: "{{ state_attr(entity, 'line') or '–' }}"
+        secondary: "{{ states(entity) }} min"
+        icon: mdi:numeric-2-circle
+        icon_color: "{{ 'green' if state_attr(entity, 'realtime') else 'grey' }}"
+        layout: vertical
+      - type: custom:mushroom-template-card
+        entity: sensor.hodzovo_departure_3
+        primary: "{{ state_attr(entity, 'line') or '–' }}"
+        secondary: "{{ states(entity) }} min"
+        icon: mdi:numeric-3-circle
+        icon_color: "{{ 'green' if state_attr(entity, 'realtime') else 'grey' }}"
+        layout: vertical

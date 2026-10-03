@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Wrong or missing departures on imhd.sk itself
+    url: https://imhd.sk/
+    about: The integration only shows what imhd.sk publishes. Data problems that are also visible on imhd.sk have to be reported to imhd.sk.
+  - name: Questions and help with templates / dashboards
+    url: https://community.home-assistant.io/
+    about: Ask the Home Assistant community, or read the templating guide in the README first.

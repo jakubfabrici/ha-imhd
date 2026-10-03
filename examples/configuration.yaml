@@ -1,0 +1,23 @@
+# configuration.yaml - snippet for IMHD.sk Departures
+#
+# Add the parts you need to your existing configuration.yaml; do not replace
+# the whole file. Paths are relative to your Home Assistant config directory.
+
+# 1) Stops defined in YAML (optional - you can also add stops in the UI).
+#    Copy examples/imhd.yaml next to configuration.yaml and adapt it.
+imhd: !include imhd.yaml
+
+# 2) Optional: template sensors built on top of the departures sensor.
+#    Copy examples/templates/template_sensors.yaml to <config>/imhd_templates.yaml.
+#    If you already have a `template:` section, paste the list items into it
+#    instead of adding a second `template:` key.
+template: !include imhd_templates.yaml
+
+# 3) Optional: debug logging while you set things up or report a bug.
+#    (You can also use "Enable debug logging" on the integration page.)
+logger:
+  default: warning
+  logs:
+    custom_components.imhd: debug
+    socketio: info
+    engineio: info

@@ -1,0 +1,216 @@
+blueprint:
+  name: IMHD.sk – notify when it's time to leave
+  description: >-
+    Sends a notification when the **Time to leave** binary sensor of an
+    [IMHD.sk Departures](https://github.com/jakubfabrici/ha-imhd) stop turns on,
+    i.e. when the next departure you can still catch leaves in walking time +
+    the configured window.
+
+
+    The message can use these variables: `line`, `destination`, `departure`
+    (ISO timestamp), `departure_time` (HH:MM), `leave_in` (minutes until you
+    have to leave), `minutes` (minutes until the departure) and `stop` (the
+    stop / device name).
+
+
+    Tip: the sensor follows the *next* departure the stop's filters allow. If
+    you only care about some lines, set the `lines` option of the stop itself;
+    the line filter below only suppresses notifications for other lines.
+  domain: automation
+  author: jakubfabrici
+  source_url: https://github.com/jakubfabrici/ha-imhd/blob/main/blueprints/automation/imhd/time_to_leave.yaml
+  homeassistant:
+    min_version: 2025.1.0
+  input:
+    departure_section:
+      name: Departure
+      icon: mdi:bus-clock
+      input:
+        leave_sensor:
+          name: Time-to-leave sensor
+          description: >-
+            The "Time to leave" binary sensor of your stop,
+            e.g. binary_sensor.hodzovo_time_to_leave.
+          selector:
+            entity:
+              filter:
+                - integration: imhd
+                  domain: binary_sensor
+        lines:
+          name: Only these lines (optional)
+          description: >-
+            Comma-separated list of lines, e.g. "44, 47". Leave empty to be
+            notified for every line.
+          default: ""
+          selector:
+            text: {}
+
+    notify_section:
+      name: Notification
+      icon: mdi:cellphone-message
+      description: Pick at least one target. All selected targets are notified.
+      input:
+        notify_devices:
+          name: Mobile app devices
+          description: Phones/tablets with the Home Assistant Companion app.
+          default: []
+          selector:
+            device:
+              multiple: true
+              filter:
+                - integration: mobile_app
+        notify_entities:
+          name: Notify entities
+          description: Notify entities (used with the notify.send_message action).
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: notify
+        notify_action:
+          name: Notify action (optional)
+          description: >-
+            Any other notify action, e.g. "notify.family" or
+            "notify.telegram_me". Leave empty if not needed.
+          default: ""
+          selector:
+            text: {}
+        title:
+          name: Title
+          default: Time to leave
+          selector:
+            text: {}
+        message:
+          name: Message
+          description: Templates allowed, see the variables listed above.
+          default: >-
+            {{ 'Leave now' if leave_in <= 0 else 'Leave in ' ~ leave_in ~ ' min' }}
+            for line {{ line }} to {{ destination }}, it departs from {{ stop }}
+            at {{ departure_time }}.
+          selector:
+            text:
+              multiline: true
+
+    conditions_section:
+      name: Conditions
+      icon: mdi:filter-outline
+      collapsed: true
+      input:
+        people:
+          name: Only when one of these people is home
+          description: Leave empty to ignore presence.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: person
+        time_after:
+          name: Only after
+          description: Leave both times at 00:00 to allow the whole day.
+          default: "00:00:00"
+          selector:
+            time: {}
+        time_before:
+          name: Only before
+          default: "00:00:00"
+          selector:
+            time: {}
+        weekdays:
+          name: Only on these days
+          default: [mon, tue, wed, thu, fri, sat, sun]
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Monday
+                  value: mon
+                - label: Tuesday
+                  value: tue
+                - label: Wednesday
+                  value: wed
+                - label: Thursday
+                  value: thu
+                - label: Friday
+                  value: fri
+                - label: Saturday
+                  value: sat
+                - label: Sunday
+                  value: sun
+        extra_conditions:
+          name: Additional conditions
+          description: Any extra conditions; all of them must pass.
+          default: []
+          selector:
+            condition: {}
+
+mode: single
+max_exceeded: silent
+
+variables:
+  leave_sensor: !input leave_sensor
+  lines_input: !input lines
+  notify_devices: !input notify_devices
+  notify_entities: !input notify_entities
+  notify_action: !input notify_action
+  people: !input people
+  allowed_lines: >-
+    {{ ((lines_input or '') | string).replace(';', ',').split(',')
+       | map('trim') | reject('eq', '') | list }}
+  line: "{{ state_attr(leave_sensor, 'line') | string }}"
+  destination: "{{ state_attr(leave_sensor, 'destination') or '' }}"
+  departure: "{{ state_attr(leave_sensor, 'departure') or '' }}"
+  departure_time: >-
+    {{ as_timestamp(departure, 0) | timestamp_custom('%H:%M') if departure else '' }}
+  leave_in: "{{ state_attr(leave_sensor, 'leave_in') | int(0) }}"
+  minutes: >-
+    {{ ((as_timestamp(departure, 0) - as_timestamp(now())) / 60) | round(0, 'ceil') | int
+       if departure else 0 }}
+  stop: >-
+    {{ device_attr(device_id(leave_sensor), 'name_by_user')
+       or device_attr(device_id(leave_sensor), 'name') or 'the stop' }}
+
+triggers:
+  - trigger: state
+    entity_id: !input leave_sensor
+    from: "off"
+    to: "on"
+
+conditions:
+  - "{{ allowed_lines | count == 0 or (line | string) in allowed_lines }}"
+  - "{{ people | count == 0 or people | select('is_state', 'home') | list | count > 0 }}"
+  - condition: time
+    after: !input time_after
+    before: !input time_before
+    weekday: !input weekdays
+  - condition: and
+    conditions: !input extra_conditions
+
+actions:
+  - repeat:
+      for_each: "{{ notify_devices }}"
+      sequence:
+        - action: "notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}"
+          data:
+            title: !input title
+            message: !input message
+            data:
+              tag: "imhd-{{ leave_sensor }}"
+  - if:
+      - "{{ notify_entities | count > 0 }}"
+    then:
+      - action: notify.send_message
+        target:
+          entity_id: "{{ notify_entities }}"
+        data:
+          title: !input title
+          message: !input message
+  - if:
+      - "{{ notify_action | trim != '' }}"
+    then:
+      - action: "{{ notify_action | trim }}"
+        data:
+          title: !input title
+          message: !input message

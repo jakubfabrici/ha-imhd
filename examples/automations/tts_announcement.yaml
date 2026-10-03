@@ -1,0 +1,47 @@
+# Announce the next departure on a speaker when it is time to leave.
+#
+# Settings -> Automations & scenes -> Create automation -> ⋮ -> Edit in YAML,
+# then paste this file. (For automations.yaml, prefix the first line with "- "
+# and indent the rest by two spaces.)
+#
+# Change: the stop ("hodzovo"), the TTS entity, the speaker, the person and
+# the time window.
+alias: "IMHD: announce time to leave"
+description: >-
+  Says something like "The next 44 to Koliba leaves in 4 minutes, running
+  1 minute late. After that, the 42 to Cintorín Vrakuňa in 6 minutes."
+triggers:
+  # Fires when it is time to walk to the stop (walking_time + window).
+  - trigger: state
+    entity_id: binary_sensor.hodzovo_time_to_leave
+    from: "off"
+    to: "on"
+conditions:
+  # Only on weekday mornings...
+  - condition: time
+    after: "06:30:00"
+    before: "09:00:00"
+    weekday: [mon, tue, wed, thu, fri]
+  # ...and only when somebody is at home to hear it.
+  - condition: state
+    entity_id: person.alex
+    state: home
+actions:
+  - action: tts.speak
+    target:
+      entity_id: tts.google_translate_en_com
+    data:
+      media_player_entity_id: media_player.kitchen_speaker
+      cache: false
+      message: >
+        {%- set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] -%}
+        {%- macro mins(n) -%}{{ n }} {{ 'minute' if n == 1 else 'minutes' }}{%- endmacro -%}
+        {%- if deps | count == 0 -%}
+        There are no departures from {{ state_attr('sensor.hodzovo_departures', 'stop_name') }} right now.
+        {%- else -%}
+        {%- set a = deps[0] -%}
+        The next {{ a.line }} to {{ a.destination }} {{ 'is leaving now' if a.minutes == 0 else 'leaves in ' ~ mins(a.minutes) }}
+        {%- if a.delay and a.delay > 0 %}, running {{ mins(a.delay) }} late{% endif %}.
+        {%- if deps | count > 1 %} After that, the {{ deps[1].line }} to {{ deps[1].destination }} in {{ mins(deps[1].minutes) }}.{% endif %}
+        {%- endif -%}
+mode: single

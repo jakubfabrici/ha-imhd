@@ -1,0 +1,60 @@
+# Push a notification when imhd.sk publishes a service alert for the stop,
+# update it when the text changes and remove it when the alert is gone.
+#
+# Settings -> Automations & scenes -> Create automation -> ⋮ -> Edit in YAML,
+# then paste this file. (For automations.yaml, prefix the first line with "- "
+# and indent the rest by two spaces.)
+#
+# Change: the stop ("hodzovo"), the notify action and the imhd.sk link.
+alias: "IMHD: service alert notification"
+description: Notify about imhd.sk service alerts (diversions, outages) for my stop.
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.hodzovo_disruption
+    to: "on"
+    id: alert
+  - trigger: state
+    entity_id: binary_sensor.hodzovo_disruption
+    attribute: messages
+    id: alert
+  - trigger: state
+    entity_id: binary_sensor.hodzovo_disruption
+    to: "off"
+    id: cleared
+conditions: []
+actions:
+  - variables:
+      messages: "{{ state_attr('binary_sensor.hodzovo_disruption', 'messages') or [] }}"
+      stop_name: "{{ state_attr('sensor.hodzovo_departures', 'stop_name') or 'my stop' }}"
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: alert
+          - condition: state
+            entity_id: binary_sensor.hodzovo_disruption
+            state: "on"
+          - "{{ messages | count > 0 }}"
+        sequence:
+          - action: notify.mobile_app_my_phone
+            data:
+              title: "Service alert: {{ stop_name }}"
+              message: >-
+                {{ messages | join('\n\n') }}
+              data:
+                # The same tag replaces the previous notification instead of
+                # stacking a new one every time the text changes.
+                tag: imhd-hodzovo-alert
+                # Opens the imhd.sk departure board when tapped.
+                url: https://imhd.sk/ba/online-zastavkova-tabula?st=83
+                clickAction: https://imhd.sk/ba/online-zastavkova-tabula?st=83
+      - conditions:
+          - condition: trigger
+            id: cleared
+        sequence:
+          - action: notify.mobile_app_my_phone
+            data:
+              message: clear_notification
+              data:
+                tag: imhd-hodzovo-alert
+mode: queued
+max: 5

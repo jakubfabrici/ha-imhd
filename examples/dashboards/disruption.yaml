@@ -1,0 +1,15 @@
+# Conditional card: shows the imhd.sk service alerts only while there are any.
+# Dashboard -> Edit -> Add card -> Manual, then paste this YAML.
+# Uses only core cards. Replace "hodzovo" with the name of your stop.
+type: conditional
+conditions:
+  - condition: state
+    entity: binary_sensor.hodzovo_disruption
+    state: "on"
+card:
+  type: markdown
+  content: |
+    ### <ha-icon icon="mdi:alert-outline"></ha-icon> Service alert
+    {% for m in state_attr('binary_sensor.hodzovo_disruption', 'messages') or [] %}
+    - {{ m }}
+    {% endfor %}

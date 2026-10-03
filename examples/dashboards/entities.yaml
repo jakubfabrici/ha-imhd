@@ -1,0 +1,46 @@
+# Entities card: the next departure in detail plus the per-departure sensors.
+# Dashboard -> Edit -> Add card -> Manual, then paste this YAML.
+# Uses only core cards. Replace "hodzovo" with the name of your stop.
+type: entities
+title: Hodžovo nám.
+state_color: true
+entities:
+  - entity: sensor.hodzovo_departures
+    name: Next departure in
+  - type: attribute
+    entity: sensor.hodzovo_departures
+    attribute: next_line
+    name: Line
+    icon: mdi:bus
+  - type: attribute
+    entity: sensor.hodzovo_departures
+    attribute: next_destination
+    name: Destination
+    icon: mdi:sign-direction
+  - entity: sensor.hodzovo_next_departure
+    name: Departs at
+    format: time
+  - entity: sensor.hodzovo_delay
+    name: Delay
+  - type: attribute
+    entity: sensor.hodzovo_departures
+    attribute: next_platform
+    name: Platform
+    icon: mdi:sign-real-estate
+  - type: section
+    label: Upcoming
+  - entity: sensor.hodzovo_departure_1
+    name: Departure 1
+  - entity: sensor.hodzovo_departure_2
+    name: Departure 2
+  - entity: sensor.hodzovo_departure_3
+    name: Departure 3
+  - type: section
+    label: Status
+  - entity: binary_sensor.hodzovo_time_to_leave
+    name: Time to leave
+  - entity: binary_sensor.hodzovo_disruption
+    name: Service alert
+  - entity: binary_sensor.hodzovo_realtime_connected
+    name: Realtime feed
+    secondary_info: last-changed
