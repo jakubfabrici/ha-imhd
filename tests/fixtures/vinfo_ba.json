@@ -1,0 +1,329 @@
+[
+ {
+  "id": 13152,
+  "lf": 1,
+  "ac": 1,
+  "img": 1017,
+  "imgt": 0,
+  "type": "SOR NS 12 Diesel",
+  "plate": "BT-387HL",
+  "issi": "1:2562",
+  "operaror": "1"
+ },
+ {
+  "id": 12520,
+  "lf": 1,
+  "ac": 1,
+  "img": 997,
+  "imgt": 0,
+  "type": "Otokar Kent C 18,75",
+  "plate": "BT-027HD",
+  "issi": "1:3380",
+  "operaror": "1"
+ },
+ {
+  "id": 14381,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-411HY",
+  "issi": "1:3515",
+  "operaror": "1"
+ },
+ {
+  "id": 10115,
+  "lf": 1,
+  "ac": 1,
+  "img": 1420,
+  "imgt": 1,
+  "type": "Škoda 30 Tr SOR",
+  "issi": "1:6103",
+  "operaror": "1"
+ },
+ {
+  "id": 10127,
+  "lf": 1,
+  "ac": 1,
+  "img": 1420,
+  "imgt": 1,
+  "type": "Škoda 30 Tr SOR",
+  "issi": "1:6115",
+  "operaror": "1"
+ },
+ {
+  "id": 13713,
+  "lf": 1,
+  "ac": 1,
+  "img": 1036,
+  "imgt": 0,
+  "type": "SOR TNS 12",
+  "issi": "1:6126",
+  "operaror": "1"
+ },
+ {
+  "id": 13714,
+  "lf": 1,
+  "ac": 1,
+  "img": 1036,
+  "imgt": 0,
+  "type": "SOR TNS 12",
+  "issi": "1:6127",
+  "operaror": "1"
+ },
+ {
+  "id": 13619,
+  "lf": 1,
+  "ac": 1,
+  "img": 1032,
+  "imgt": 0,
+  "type": "Škoda 27 Tr Solaris",
+  "issi": "1:6716",
+  "operaror": "1"
+ },
+ {
+  "id": 13622,
+  "lf": 1,
+  "ac": 1,
+  "img": 1032,
+  "imgt": 0,
+  "type": "Škoda 27 Tr Solaris",
+  "issi": "1:6720",
+  "operaror": "1"
+ },
+ {
+  "id": 9908,
+  "lf": 1,
+  "ac": 1,
+  "img": 739,
+  "imgt": 0,
+  "type": "Škoda 31 Tr SOR",
+  "issi": "1:6813",
+  "operaror": "1"
+ },
+ {
+  "id": 10143,
+  "lf": 1,
+  "ac": 1,
+  "img": 739,
+  "imgt": 0,
+  "type": "Škoda 31 Tr SOR",
+  "issi": "1:6865",
+  "operaror": "1"
+ },
+ {
+  "id": 10581,
+  "lf": 1,
+  "ac": 1,
+  "img": 705,
+  "imgt": 1,
+  "type": "SOR NB 18 City",
+  "plate": "BL-143PM",
+  "issi": "1:2247",
+  "operaror": "1"
+ },
+ {
+  "id": 9854,
+  "lf": 1,
+  "ac": 1,
+  "img": 1420,
+  "imgt": 1,
+  "type": "Škoda 30 Tr SOR",
+  "issi": "1:6101",
+  "operaror": "1"
+ },
+ {
+  "id": 10117,
+  "lf": 1,
+  "ac": 1,
+  "img": 1420,
+  "imgt": 1,
+  "type": "Škoda 30 Tr SOR",
+  "issi": "1:6105",
+  "operaror": "1"
+ },
+ {
+  "id": 13716,
+  "lf": 1,
+  "ac": 1,
+  "img": 1036,
+  "imgt": 0,
+  "type": "SOR TNS 12",
+  "issi": "1:6129",
+  "operaror": "1"
+ },
+ {
+  "id": 9923,
+  "lf": 1,
+  "ac": 1,
+  "img": 739,
+  "imgt": 0,
+  "type": "Škoda 31 Tr SOR",
+  "issi": "1:6828",
+  "operaror": "1"
+ },
+ {
+  "id": 9934,
+  "lf": 1,
+  "ac": 1,
+  "img": 739,
+  "imgt": 0,
+  "type": "Škoda 31 Tr SOR",
+  "issi": "1:6839",
+  "operaror": "1"
+ },
+ {
+  "id": 13694,
+  "lf": 1,
+  "ac": 1,
+  "img": 1033,
+  "imgt": 0,
+  "type": "Škoda-Solaris Trollino 24",
+  "issi": "1:6902",
+  "operaror": "1"
+ },
+ {
+  "id": 10568,
+  "lf": 1,
+  "ac": 1,
+  "img": 705,
+  "imgt": 1,
+  "type": "SOR NB 18 City",
+  "plate": "BL-297PP",
+  "issi": "1:2234",
+  "operaror": "1"
+ },
+ {
+  "id": 10585,
+  "lf": 1,
+  "ac": 1,
+  "img": 705,
+  "imgt": 1,
+  "type": "SOR NB 18 City",
+  "plate": "BL-078PK",
+  "issi": "1:2251",
+  "operaror": "1"
+ },
+ {
+  "id": 14430,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-739IV",
+  "issi": "1:3547",
+  "operaror": "1"
+ },
+ {
+  "id": 14433,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-202JI",
+  "issi": "1:3550",
+  "operaror": "1"
+ },
+ {
+  "id": 14438,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-468JI",
+  "issi": "1:3555",
+  "operaror": "1"
+ },
+ {
+  "id": 14439,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-247JI",
+  "issi": "1:3556",
+  "operaror": "1"
+ },
+ {
+  "id": 14443,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-079IX",
+  "issi": "1:3560",
+  "operaror": "1"
+ },
+ {
+  "id": 14444,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-739IA",
+  "issi": "1:3561",
+  "operaror": "1"
+ },
+ {
+  "id": 10099,
+  "lf": 1,
+  "ac": 1,
+  "img": 1057,
+  "imgt": 1,
+  "type": "SOR NB 18 City",
+  "plate": "BL-032JB",
+  "issi": "1:4251",
+  "operaror": "1"
+ },
+ {
+  "id": 14422,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-836IV",
+  "issi": "1:3539",
+  "operaror": "1"
+ },
+ {
+  "id": 14429,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-480JI",
+  "issi": "1:3546",
+  "operaror": "1"
+ },
+ {
+  "id": 14432,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-249JI",
+  "issi": "1:3549",
+  "operaror": "1"
+ },
+ {
+  "id": 14447,
+  "lf": 1,
+  "ac": 1,
+  "img": 1794,
+  "imgt": 1,
+  "type": "SOR NS 18",
+  "plate": "AB-744IV",
+  "issi": "1:3564",
+  "operaror": "1"
+ }
+]

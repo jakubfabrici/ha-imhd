@@ -1,0 +1,112 @@
+refresh:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: imhd
+    entity_id:
+      required: false
+      selector:
+        entity:
+          integration: imhd
+          multiple: true
+
+get_departures:
+  fields:
+    entity_id:
+      required: false
+      example: sensor.hodzovo_departures
+      selector:
+        entity:
+          integration: imhd
+          domain: sensor
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: imhd
+    line:
+      required: false
+      example: '["9", "X13"]'
+      selector:
+        text:
+          multiple: true
+    direction:
+      required: false
+      example: Petržalka
+      selector:
+        text:
+    limit:
+      required: false
+      example: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          mode: box
+    min_minutes:
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 120
+          mode: box
+          unit_of_measurement: min
+
+find_stops:
+  fields:
+    city:
+      required: true
+      example: ba
+      selector:
+        select:
+          custom_value: true
+          translation_key: city
+          options:
+            - ba
+            - bb
+            - hc
+            - ke
+            - lm
+            - mt
+            - nr
+            - nz
+            - pb
+            - pd
+            - pn
+            - po
+            - rk
+            - se
+            - si
+            - sn
+            - tatry
+            - tn
+            - transport
+            - tt
+            - za
+            - zv
+    latitude:
+      required: false
+      example: 48.1486
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+          mode: box
+    longitude:
+      required: false
+      example: 17.1077
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+          mode: box
+    query:
+      required: false
+      example: Hodžovo
+      selector:
+        text:

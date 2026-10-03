@@ -1,0 +1,976 @@
+[
+ {
+  "zastavka": 1130,
+  "nastupiste": 2476,
+  "timestamp": 1791056252312,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "1",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19585516,
+    "cas": 1791057300000,
+    "casCP": 1791057300000,
+    "typ": "cp",
+    "konecnaZstr": "Važecká",
+    "konecnaZobec": "Košice",
+    "odjazd": "17 min"
+   },
+   {
+    "linka": "1",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19585519,
+    "cas": 1791059100000,
+    "casCP": 1791059100000,
+    "typ": "cp",
+    "konecnaZstr": "Važecká",
+    "konecnaZobec": "Košice",
+    "odjazd": "47 min"
+   },
+   {
+    "linka": "3",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19586053,
+    "cas": 1791056400000,
+    "casCP": 1791056400000,
+    "typ": "cp",
+    "konecnaZstr": "Važecká",
+    "konecnaZobec": "Košice",
+    "odjazd": "2 min"
+   },
+   {
+    "linka": "3",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19586056,
+    "cas": 1791058200000,
+    "casCP": 1791058200000,
+    "typ": "cp",
+    "konecnaZstr": "Važecká",
+    "konecnaZobec": "Košice",
+    "odjazd": "32 min"
+   },
+   {
+    "linka": "7",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 8,
+    "i": 19586692,
+    "cas": 1791056580000,
+    "casCP": 1791056580000,
+    "typ": "cp",
+    "konecnaZstr": "Socha Jána Pavla II.",
+    "konecnaZobec": "Košice",
+    "odjazd": "5 min"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2474,
+  "timestamp": 1791056252312,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "1",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19585677,
+    "cas": 1791056400000,
+    "casCP": 1791056400000,
+    "typ": "cp",
+    "konecnaZstr": "Havlíčkova",
+    "konecnaZobec": "Košice",
+    "odjazd": "2 min"
+   },
+   {
+    "linka": "1",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19585680,
+    "cas": 1791058200000,
+    "casCP": 1791058200000,
+    "typ": "cp",
+    "konecnaZstr": "Havlíčkova",
+    "konecnaZobec": "Košice",
+    "odjazd": "32 min"
+   },
+   {
+    "linka": "7",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19586847,
+    "cas": 1791057960000,
+    "casCP": 1791057960000,
+    "typ": "cp",
+    "konecnaZstr": "Botanická záhrada",
+    "konecnaZobec": "Košice",
+    "odjazd": "28 min"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2475,
+  "timestamp": 1791056252312,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "2",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19585885,
+    "cas": 1791057300000,
+    "casCP": 1791057300000,
+    "typ": "cp",
+    "konecnaZstr": "Havlíčkova",
+    "konecnaZobec": "Košice",
+    "odjazd": "17 min"
+   },
+   {
+    "linka": "2",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19585887,
+    "cas": 1791059100000,
+    "casCP": 1791059100000,
+    "typ": "cp",
+    "konecnaZstr": "Havlíčkova",
+    "konecnaZobec": "Košice",
+    "odjazd": "47 min"
+   },
+   {
+    "linka": "6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19586463,
+    "cas": 1791056760000,
+    "casCP": 1791056760000,
+    "typ": "cp",
+    "konecnaZstr": "Havlíčkova",
+    "konecnaZobec": "Košice",
+    "odjazd": "8 min"
+   },
+   {
+    "linka": "6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19586465,
+    "cas": 1791057960000,
+    "casCP": 1791057960000,
+    "typ": "cp",
+    "konecnaZstr": "Havlíčkova",
+    "konecnaZobec": "Košice",
+    "odjazd": "28 min"
+   },
+   {
+    "linka": "6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19586469,
+    "cas": 1791060360000,
+    "casCP": 1791060360000,
+    "typ": "cp",
+    "konecnaZstr": "Spoločenský pavilón",
+    "konecnaZobec": "Košice",
+    "odjazd": "22:46"
+   },
+   {
+    "linka": "6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19586471,
+    "cas": 1791061560000,
+    "casCP": 1791061560000,
+    "typ": "cp",
+    "konecnaZstr": "Amfiteáter",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:06"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2482,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "2",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19585781,
+    "cas": 1791056280000,
+    "casCP": 1791056280000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "<1 min"
+   },
+   {
+    "linka": "2",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19585783,
+    "cas": 1791057480000,
+    "casCP": 1791057480000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "20 min"
+   },
+   {
+    "linka": "3",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19586223,
+    "cas": 1791057300000,
+    "casCP": 1791057300000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "17 min"
+   },
+   {
+    "linka": "3",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19586226,
+    "cas": 1791059100000,
+    "casCP": 1791059100000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "47 min"
+   },
+   {
+    "linka": "6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 17,
+    "i": 19586343,
+    "cas": 1791057240000,
+    "casCP": 1791057240000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "16 min"
+   },
+   {
+    "linka": "6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 17,
+    "i": 19586345,
+    "cas": 1791058440000,
+    "casCP": 1791058440000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "36 min"
+   },
+   {
+    "linka": "R1",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 12,
+    "i": 19586509,
+    "cas": 1791059580000,
+    "casCP": 1791059580000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "55 min"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2479,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "10",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 7,
+    "i": 19587520,
+    "cas": 1791056820000,
+    "casCP": 1791056820000,
+    "typ": "cp",
+    "konecnaZstr": "Madridská",
+    "konecnaZobec": "Košice",
+    "odjazd": "9 min"
+   },
+   {
+    "linka": "10",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 7,
+    "i": 19587524,
+    "cas": 1791058620000,
+    "casCP": 1791058620000,
+    "typ": "cp",
+    "konecnaZstr": "Madridská",
+    "konecnaZobec": "Košice",
+    "odjazd": "39 min"
+   },
+   {
+    "linka": "15",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 6,
+    "i": 19588818,
+    "cas": 1791056580000,
+    "casCP": 1791056580000,
+    "typ": "cp",
+    "konecnaZstr": "Exnárova",
+    "konecnaZobec": "Košice",
+    "odjazd": "5 min"
+   },
+   {
+    "linka": "15",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 6,
+    "i": 19588822,
+    "cas": 1791058380000,
+    "casCP": 1791058380000,
+    "typ": "cp",
+    "konecnaZstr": "Exnárova",
+    "konecnaZobec": "Košice",
+    "odjazd": "35 min"
+   },
+   {
+    "linka": "20",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 11,
+    "i": 19590307,
+    "cas": 1791057360000,
+    "casCP": 1791057360000,
+    "typ": "cp",
+    "konecnaZstr": "Košická Nová Ves",
+    "konecnaZobec": "Košice",
+    "odjazd": "18 min"
+   },
+   {
+    "linka": "20",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 11,
+    "i": 19590311,
+    "cas": 1791060960000,
+    "casCP": 1791060960000,
+    "typ": "cp",
+    "konecnaZstr": "Košická Nová Ves",
+    "konecnaZobec": "Košice",
+    "odjazd": "22:56"
+   },
+   {
+    "linka": "31",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 8,
+    "i": 19592425,
+    "cas": 1791060420000,
+    "casCP": 1791060420000,
+    "typ": "cp",
+    "konecnaZstr": "Vyšné Opátske",
+    "konecnaZobec": "Košice",
+    "odjazd": "22:47"
+   },
+   {
+    "linka": "32",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19592594,
+    "cas": 1791059460000,
+    "casCP": 1791059460000,
+    "typ": "cp",
+    "konecnaZstr": "Košická Nová Ves",
+    "konecnaZobec": "Košice",
+    "odjazd": "53 min"
+   },
+   {
+    "linka": "52",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 12,
+    "i": 19594105,
+    "cas": 1791057780000,
+    "casCP": 1791057780000,
+    "typ": "cp",
+    "konecnaZstr": "Krásna",
+    "konecnaZobec": "Košice",
+    "odjazd": "25 min"
+   },
+   {
+    "linka": "52",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 12,
+    "i": 19594109,
+    "cas": 1791059580000,
+    "casCP": 1791059580000,
+    "typ": "cp",
+    "konecnaZstr": "Krásna",
+    "konecnaZobec": "Košice",
+    "odjazd": "55 min"
+   },
+   {
+    "linka": "N1",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19587543,
+    "cas": 1791062280000,
+    "casCP": 1791062280000,
+    "typ": "cp",
+    "konecnaZstr": "Madridská",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:18"
+   },
+   {
+    "linka": "N5",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 1,
+    "i": 19587615,
+    "cas": 1791062280000,
+    "casCP": 1791062280000,
+    "typ": "cp",
+    "konecnaZstr": "Lingov",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:18"
+   },
+   {
+    "linka": "25",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19590922,
+    "cas": 1791060300000,
+    "casCP": 1791060300000,
+    "typ": "cp",
+    "konecnaZstr": "Budapeštianska",
+    "konecnaZobec": "Košice",
+    "odjazd": "22:45"
+   },
+   {
+    "linka": "35",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 0,
+    "i": 19593231,
+    "cas": 1791059160000,
+    "casCP": 1791059160000,
+    "typ": "cp",
+    "konecnaZstr": "Poliklinika Východ",
+    "konecnaZobec": "Košice",
+    "odjazd": "48 min"
+   },
+   {
+    "linka": "N7",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19587657,
+    "cas": 1791062280000,
+    "casCP": 1791062280000,
+    "typ": "cp",
+    "konecnaZstr": "Važecká",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:18"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2480,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "10",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19587297,
+    "cas": 1791056460000,
+    "casCP": 1791056460000,
+    "typ": "cp",
+    "konecnaZstr": "Luník VIII",
+    "konecnaZobec": "Košice",
+    "odjazd": "3 min"
+   },
+   {
+    "linka": "10",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 13,
+    "i": 19587299,
+    "cas": 1791058260000,
+    "casCP": 1791058260000,
+    "typ": "cp",
+    "konecnaZstr": "Luník VIII",
+    "konecnaZobec": "Košice",
+    "odjazd": "33 min"
+   },
+   {
+    "linka": "15",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19588603,
+    "cas": 1791056940000,
+    "casCP": 1791056940000,
+    "typ": "cp",
+    "konecnaZstr": "Obchodné centrum Cassovia",
+    "konecnaZobec": "Košice",
+    "odjazd": "11 min"
+   },
+   {
+    "linka": "15",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19588607,
+    "cas": 1791058740000,
+    "casCP": 1791058740000,
+    "typ": "cp",
+    "konecnaZstr": "Obchodné centrum Cassovia",
+    "konecnaZobec": "Košice",
+    "odjazd": "41 min"
+   },
+   {
+    "linka": "20",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19590225,
+    "cas": 1791059220000,
+    "casCP": 1791059220000,
+    "typ": "cp",
+    "konecnaZstr": "Hríbová",
+    "konecnaZobec": "Košice",
+    "odjazd": "49 min"
+   },
+   {
+    "linka": "25",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 17,
+    "i": 19590836,
+    "cas": 1791059340000,
+    "casCP": 1791059340000,
+    "typ": "cp",
+    "konecnaZstr": "Poľov",
+    "konecnaZobec": "Košice",
+    "odjazd": "51 min"
+   },
+   {
+    "linka": "32",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19592508,
+    "cas": 1791057420000,
+    "casCP": 1791057420000,
+    "typ": "cp",
+    "konecnaZstr": "Maša",
+    "konecnaZobec": "Košice",
+    "odjazd": "19 min"
+   },
+   {
+    "linka": "32",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19592512,
+    "cas": 1791061020000,
+    "casCP": 1791061020000,
+    "typ": "cp",
+    "konecnaZstr": "Maša",
+    "konecnaZobec": "Košice",
+    "odjazd": "22:57"
+   },
+   {
+    "linka": "52",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 19,
+    "i": 19593952,
+    "cas": 1791056880000,
+    "casCP": 1791056880000,
+    "typ": "cp",
+    "konecnaZstr": "Nemocnica Šaca",
+    "konecnaZobec": "Košice",
+    "odjazd": "10 min"
+   },
+   {
+    "linka": "52",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 19,
+    "i": 19593956,
+    "cas": 1791058680000,
+    "casCP": 1791058680000,
+    "typ": "cp",
+    "konecnaZstr": "Nemocnica Šaca",
+    "konecnaZobec": "Košice",
+    "odjazd": "40 min"
+   },
+   {
+    "linka": "71",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 15,
+    "i": 19594526,
+    "cas": 1791056760000,
+    "casCP": 1791056760000,
+    "typ": "cp",
+    "konecnaZstr": "KVP, kláštor",
+    "konecnaZobec": "Košice",
+    "odjazd": "8 min"
+   },
+   {
+    "linka": "71",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 15,
+    "i": 19594530,
+    "cas": 1791058560000,
+    "casCP": 1791058560000,
+    "typ": "cp",
+    "konecnaZstr": "KVP, kláštor",
+    "konecnaZobec": "Košice",
+    "odjazd": "38 min"
+   },
+   {
+    "linka": "72",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 15,
+    "i": 19595014,
+    "cas": 1791057660000,
+    "casCP": 1791057660000,
+    "typ": "cp",
+    "konecnaZstr": "Grunt",
+    "konecnaZobec": "Košice",
+    "odjazd": "23 min"
+   },
+   {
+    "linka": "72",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 15,
+    "i": 19595019,
+    "cas": 1791059460000,
+    "casCP": 1791059460000,
+    "typ": "cp",
+    "konecnaZstr": "Grunt",
+    "konecnaZobec": "Košice",
+    "odjazd": "53 min"
+   },
+   {
+    "linka": "N4",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19587596,
+    "cas": 1791062280000,
+    "casCP": 1791062280000,
+    "typ": "cp",
+    "konecnaZstr": "Ryba",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:18"
+   },
+   {
+    "linka": "N2",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19587563,
+    "cas": 1791062280000,
+    "casCP": 1791062280000,
+    "typ": "cp",
+    "konecnaZstr": "Podhradová",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:18"
+   },
+   {
+    "linka": "N6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 2,
+    "i": 19587635,
+    "cas": 1791062280000,
+    "casCP": 1791062280000,
+    "typ": "cp",
+    "konecnaZstr": "KVP, kláštor",
+    "konecnaZobec": "Košice",
+    "odjazd": "23:18"
+   },
+   {
+    "linka": "31",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19592344,
+    "cas": 1791058440000,
+    "casCP": 1791058440000,
+    "typ": "cp",
+    "konecnaZstr": "Lorinčík",
+    "konecnaZobec": "Košice",
+    "odjazd": "36 min"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2478,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": []
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2483,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "11",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 0,
+    "i": 19587735,
+    "cas": 1791058620000,
+    "casCP": 1791058620000,
+    "typ": "cp",
+    "konecnaZstr": "Luník IX, sídlisko",
+    "konecnaZobec": "Košice",
+    "odjazd": "39 min"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2477,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": [
+   {
+    "linka": "23",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 9,
+    "i": 19590710,
+    "cas": 1791059520000,
+    "casCP": 1791059520000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "54 min"
+   },
+   {
+    "linka": "71",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 11,
+    "i": 19594749,
+    "cas": 1791057000000,
+    "casCP": 1791057000000,
+    "typ": "cp",
+    "konecnaZstr": "Lingov",
+    "konecnaZobec": "Košice",
+    "odjazd": "12 min"
+   },
+   {
+    "linka": "71",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 11,
+    "i": 19594753,
+    "cas": 1791058800000,
+    "casCP": 1791058800000,
+    "typ": "cp",
+    "konecnaZstr": "Lingov",
+    "konecnaZobec": "Košice",
+    "odjazd": "42 min"
+   },
+   {
+    "linka": "72",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 10,
+    "i": 19595293,
+    "cas": 1791057900000,
+    "casCP": 1791057900000,
+    "typ": "cp",
+    "konecnaZstr": "Lingov",
+    "konecnaZobec": "Košice",
+    "odjazd": "27 min"
+   },
+   {
+    "linka": "72",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 10,
+    "i": 19595298,
+    "cas": 1791059700000,
+    "casCP": 1791059700000,
+    "typ": "cp",
+    "konecnaZstr": "Lingov",
+    "konecnaZobec": "Košice",
+    "odjazd": "57 min"
+   },
+   {
+    "linka": "N4",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 14,
+    "i": 19587606,
+    "cas": 1791065400000,
+    "casCP": 1791065400000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "00:10"
+   },
+   {
+    "linka": "N3",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 15,
+    "i": 19587587,
+    "cas": 1791065100000,
+    "casCP": 1791065100000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "00:05"
+   },
+   {
+    "linka": "N2",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 15,
+    "i": 19587573,
+    "cas": 1791065400000,
+    "casCP": 1791065400000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "00:10"
+   },
+   {
+    "linka": "N6",
+    "sekcie": [
+     "ke"
+    ],
+    "tuZidx": 11,
+    "i": 19597312,
+    "cas": 1791065400000,
+    "casCP": 1791065400000,
+    "typ": "cp",
+    "konecnaZstr": "Staničné námestie",
+    "konecnaZobec": "Košice",
+    "odjazd": "00:10"
+   }
+  ]
+ },
+ {
+  "zastavka": 1130,
+  "nastupiste": 2481,
+  "timestamp": 1791056252313,
+  "nextRowAt": null,
+  "tab": []
+ }
+]

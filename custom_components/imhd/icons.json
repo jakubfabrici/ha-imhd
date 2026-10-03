@@ -1,0 +1,46 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "disruption": {
+        "default": "mdi:bus-alert",
+        "state": {
+          "off": "mdi:bus"
+        }
+      },
+      "time_to_leave": {
+        "default": "mdi:walk",
+        "state": {
+          "on": "mdi:run-fast"
+        }
+      }
+    },
+    "sensor": {
+      "delay": {
+        "default": "mdi:timer-alert-outline"
+      },
+      "departure": {
+        "default": "mdi:bus-clock"
+      },
+      "departures": {
+        "default": "mdi:bus-clock"
+      },
+      "next_departure": {
+        "default": "mdi:clock-start"
+      },
+      "next_line": {
+        "default": "mdi:bus-side"
+      }
+    }
+  },
+  "services": {
+    "find_stops": {
+      "service": "mdi:map-search"
+    },
+    "get_departures": {
+      "service": "mdi:bus-clock"
+    },
+    "refresh": {
+      "service": "mdi:refresh"
+    }
+  }
+}
