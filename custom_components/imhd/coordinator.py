@@ -41,6 +41,7 @@ from .const import (
     DOMAIN,
     EMPTY_BOARD_AFTER,
     ISSUE_REJECTED,
+    REALTIME_DEPARTED_GRACE,
     REJECT_BACKOFF,
     TICK_INTERVAL,
     UNAVAILABLE_AFTER,
@@ -59,8 +60,18 @@ INFO_GRACE = 15.0
 # (at worst on its next 3 s tick): an emptied platform keeps its departures
 # unless it stays empty this long.
 EMPTY_PLATFORM_GRACE = 5.0
+# A dropped connection is usually back within seconds (BACKOFF_MIN, doubled on
+# each failed attempt, and a second or so to connect): vehicles at the stop are
+# kept for the next session to confirm them, unless none sends departures within
+# this long after the drop.
+RECONNECT_GRACE = 30.0
+# A due departure that went (dropped past its time or no longer listed) stays
+# gone unless imhd.sk moves its time on by this much.
+MOVED_ON = timedelta(minutes=1)
 
 type ImhdConfigEntry = ConfigEntry[ImhdCoordinator]
+# A departure on the board: (platform id, trip id).
+type TripKey = tuple[str | None, int | None]
 
 
 def as_list(value: Any, *, split: bool = True) -> list[str]:
@@ -218,6 +229,14 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self._emptied_since: dict[str, float] = {}
         # Their empty elements from this session, with the timers ending the grace.
         self._emptied: dict[str, tuple[Mapping[str, Any], CALLBACK_TYPE]] = {}
+        # Due departures: where each was when it became due, and its latest time.
+        self._due: dict[TripKey, tuple[tuple[Any, ...], datetime]] = {}
+        # Due departures that went, with their latest time.
+        self._gone: dict[TripKey, datetime] = {}
+        # True once no session sent departures for RECONNECT_GRACE after a drop:
+        # nothing confirms that vehicles are still at the stop.
+        self._unconfirmed = False
+        self._unsub_unconfirmed: CALLBACK_TYPE | None = None
         self._content: tuple[Any, ...] | None = None
         self.data = StopData(stop=stop)
 
@@ -266,6 +285,7 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
                 unsub()
         self._unsub_tick = self._unsub_publish = self._unsub_empty = self._unsub_info = None
         self._cancel_emptied()
+        self._cancel_unconfirmed()
         await self._async_stop_feed()
         await super().async_shutdown()
 
@@ -328,7 +348,9 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             now,
             stop_id=self.stop.stop_id,
             vehicles=self._vehicles,
+            vehicle_grace=not self._unconfirmed,
         )
+        departures = self._track_due(departures, now)
         matching = self.filter.apply(departures, now)
         return StopData(
             stop=self.stop,
@@ -340,6 +362,47 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             last_update=self.last_update,
             reconnects=self.reconnects,
         )
+
+    def _track_due(self, departures: list[Departure], now: datetime) -> list[Departure]:
+        """Return the departures without those that went, due ones kept in place.
+
+        imhd.sk moves the prediction of a vehicle waiting at the stop on: sorted
+        by it, two vehicles at the stop would swap places (N95 -> N70 -> N95). One
+        moved a minute or more ahead (a late start) is sorted by it again.
+
+        A due departure that went stays gone: listed again with its time moved on
+        by less than a minute, a vehicle at the stop dropped while disconnected
+        came back with the next session (Next line N95 -> N55 -> N95).
+        """
+        now = dt_util.as_utc(now)
+        due: dict[TripKey, tuple[tuple[Any, ...], datetime]] = {}
+        kept: list[Departure] = []
+        for dep in departures:
+            key, when = (dep.platform_id, dep.trip_id), dt_util.as_utc(dep.departure)
+            if (gone := self._gone.get(key)) is not None and when < gone + MOVED_ON:
+                continue
+            kept.append(dep)
+            if key in self._due and dep.minutes == 0:
+                due[key] = (self._due[key][0], when)
+            elif dep.trip_id is not None and when <= now:
+                due[key] = (dep.shown_order, when)
+        listed = {(dep.platform_id, dep.trip_id) for dep in kept}
+        self._gone.update((key, when) for key, (_, when) in self._due.items() if key not in listed)
+        # Listed again later, they would be dropped past their time anyway.
+        self._gone = {
+            key: when
+            for key, when in self._gone.items()
+            if now < when + MOVED_ON + REALTIME_DEPARTED_GRACE
+        }
+        self._due = due
+        order = {key: place for key, (place, _when) in due.items()}
+        kept.sort(
+            key=lambda dep: (
+                dep.minutes,
+                order.get((dep.platform_id, dep.trip_id), dep.shown_order),
+            )
+        )
+        return kept
 
     @callback
     def _publish(self, *, from_feed: bool = False, force: bool = False) -> None:
@@ -418,8 +481,13 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.connected = False
         if self._disconnected_at is None:
             self._disconnected_at = dt_util.utcnow()
-        # Keep the info texts (no off/on flicker) and the departures of platforms
-        # just sent empty until the next session confirms them.
+        # Keep the info texts (no off/on flicker), the departures of platforms
+        # just sent empty and the vehicles at the stop (for RECONNECT_GRACE) until
+        # the next session confirms them.
+        if not self._unconfirmed and self._unsub_unconfirmed is None:
+            self._unsub_unconfirmed = async_call_later(
+                self.hass, RECONNECT_GRACE, self._async_unconfirmed
+            )
         self._awaiting_info = True
         self._cancel_info_timeout()
         self._cancel_emptied()
@@ -432,6 +500,9 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         """Merge a `tabs` payload (one element per platform)."""
         self.last_raw = payload
         self.last_message = dt_util.now()
+        # A session sending departures confirms the vehicles at the stop.
+        self._unconfirmed = False
+        self._cancel_unconfirmed()
         for element in iter_platform_elements(payload):
             stop, platform = element.get("zastavka"), element.get("nastupiste")
             if platform is None or (stop is not None and str(stop) != str(self.stop.stop_id)):
@@ -489,6 +560,20 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
                 del self._emptied[other], self._emptied_since[other]
                 self._rows[other] = element
         self._schedule_publish()
+
+    @callback
+    def _async_unconfirmed(self, _now: datetime) -> None:
+        """No session sent departures since the drop: vehicles at the stop go."""
+        self._unsub_unconfirmed = None
+        self._unconfirmed = True
+        if self.has_data:
+            self._publish()
+
+    @callback
+    def _cancel_unconfirmed(self) -> None:
+        if self._unsub_unconfirmed is not None:
+            self._unsub_unconfirmed()
+            self._unsub_unconfirmed = None
 
     @callback
     def _cancel_emptied(self) -> None:

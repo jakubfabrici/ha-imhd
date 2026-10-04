@@ -30,6 +30,7 @@ from .const import (
     DEPARTED_GRACE,
     HANDSHAKE_TIMEOUT,
     HTTP_TIMEOUT,
+    REALTIME_DEPARTED_GRACE,
     REJECT_BACKOFF,
     REJECT_BACKOFF_MAX,
     SECTIONS,
@@ -397,6 +398,7 @@ def parse_tabs(
     *,
     stop_id: int | None = None,
     vehicles: Mapping[str, Mapping[str, Any]] | None = None,
+    vehicle_grace: bool = True,
 ) -> list[Departure]:
     """Parse a `tabs` payload into departures sorted like the imhd.sk board.
 
@@ -404,8 +406,13 @@ def parse_tabs(
     a fixed order (line, trip): sorting by the prediction would swap departures
     whenever it moves by a second or two.
 
-    With `now`, rows that departed more than the grace period ago are dropped
-    and `minutes`/`leave_in` are computed.
+    With `now`, `minutes`/`leave_in` are computed and departed rows dropped once
+    their time is more than DEPARTED_GRACE past. With `vehicle_grace`, a row
+    whose vehicle is on its way (it names the stop the vehicle passed last) is
+    kept up to REALTIME_DEPARTED_GRACE past: imhd.sk lists it `*` until the
+    vehicle has left the stop. Rows without the previous stop are timetable
+    times, also when a vehicle is assigned (imhd.sk listed one such trip `*` for
+    31 minutes).
     """
     departures: list[Departure] = []
     for element in iter_platform_elements(payload):
@@ -429,8 +436,11 @@ def parse_tabs(
             if departure is None:
                 continue
             if now is not None:
+                grace = DEPARTED_GRACE
+                if vehicle_grace and departure.realtime and departure.previous_stop is not None:
+                    grace = REALTIME_DEPARTED_GRACE
                 # In UTC: local times compare as wall clock times (wrong across DST).
-                if dt_util.as_utc(departure.departure) < dt_util.as_utc(now) - DEPARTED_GRACE:
+                if dt_util.as_utc(departure.departure) < dt_util.as_utc(now) - grace:
                     continue
                 departure = departure.with_countdown(now)
             departures.append(departure)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
 from freezegun.api import FrozenDateTimeFactory
@@ -32,7 +33,7 @@ from custom_components.imhd.const import (
 from custom_components.imhd.coordinator import INFO_GRACE
 from custom_components.imhd.diagnostics import async_get_config_entry_diagnostics
 
-from .conftest import LABELS, FakeFeed, load_json, row, sample_tabs, setup_entry, tabs
+from .conftest import LABELS, ON_THE_WAY, FakeFeed, load_json, row, sample_tabs, setup_entry, tabs
 
 MAIN = "sensor.hodzovo_departures"
 
@@ -277,6 +278,82 @@ async def test_countdown_tick(
     assert state.state == "2"
     assert state.attributes["next_line"] == "9"
     assert state.attributes["departure_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("delay", "extra", "due_since"),
+    [
+        (None, {}, 20),  # timetable only: dropped 30 s after its time
+        (0, {"tuZidx": 0}, 20),  # vehicle assigned, trip not started: the same
+        (0, ON_THE_WAY, 75),  # vehicle on its way: dropped 90 s after its time
+    ],
+)
+async def test_departed_rows_dropped_although_listed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    *,
+    delay: int | None,
+    extra: dict[str, Any],
+    due_since: int,
+) -> None:
+    """imhd.sk can list a row past its time; the countdown tick still drops it."""
+    departed = row("X13", -due_since / 60, "Petržalka", delay=delay, trip=1, odjazd="*", **extra)
+    fake_feed.initial = [
+        tabs(213, [departed]),
+        tabs(214, [row("4", 20, "Dúbravka", delay=0, trip=2)]),
+    ]
+    await setup_entry(hass, config_entry)
+    state = hass.states.get(MAIN)
+    assert (state.state, state.attributes["next_line"]) == ("0", "X13")
+
+    freezer.tick(timedelta(seconds=30))  # the next countdown tick
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    state = hass.states.get(MAIN)
+    assert (state.state, state.attributes["next_line"]) == ("19", "4")
+    assert state.attributes["departure_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("resent", "dropped_at"),
+    [
+        (True, 100),  # the first feed message more than 90 s past its time
+        (False, 110),  # the countdown tick at 21:01:30
+    ],
+)
+async def test_vehicle_at_the_stop_dropped_although_listed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    *,
+    resent: bool,
+    dropped_at: int,
+) -> None:
+    """imhd.sk can keep resending a frozen platform: a vehicle at the stop goes too.
+
+    It is dropped once its time is more than 90 s past, on the next feed message
+    or countdown tick (so up to 120 s past without feed messages).
+    """
+    at_stop = tabs(
+        213, [row("X13", -20 / 60, "Petržalka", delay=0, trip=1, odjazd="*", **ON_THE_WAY)]
+    )
+    fake_feed.initial = [at_stop, tabs(214, [row("4", 20, "Dúbravka", delay=0, trip=2)])]
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    shown: dict[int, str] = {}
+    for due_since in range(30, 140, 10):  # every 10 s from 21:00:10 (30 s past) on
+        freezer.tick(timedelta(seconds=10))
+        async_fire_time_changed(hass)
+        if resent:
+            listener.feed_tabs([at_stop])
+        await hass.async_block_till_done()
+        shown[due_since] = hass.states.get(MAIN).attributes["next_line"]
+    assert shown == {due_since: "X13" if due_since < dropped_at else "4" for due_since in shown}
 
 
 @pytest.mark.parametrize(

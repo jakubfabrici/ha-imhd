@@ -16,7 +16,11 @@ First public release. Requires Home Assistant **2025.2.0** or newer.
   connection per configured stop, no add-on, MQTT broker, pyscript or browser
   needed. Partial per-platform updates are merged, and countdowns are
   recomputed every 30 seconds, in real time, so they stay right across the
-  summer-time changes. A departure is kept until 30 seconds after it leaves.
+  summer-time changes. A departure is kept until 30 seconds after its time.
+  One whose vehicle is on its way is kept while imhd.sk lists it, at most 90
+  seconds, as the vehicle may still wait at the stop, also across a reconnect
+  within 30 seconds. Departures already due keep their order, and once gone
+  don't come back unless their time moved on by a minute or more.
 - Few state changes on busy stops: identical repeats, prediction shifts of a
   few seconds within the minute shown and changes to departures no entity
   shows write nothing. Departures are listed by countdown like on the imhd.sk

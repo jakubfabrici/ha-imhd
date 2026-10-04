@@ -37,6 +37,7 @@ from .conftest import (
     LABELS,
     NEAREST_URL,
     NOW,
+    ON_THE_WAY,
     STOP_PAGE_URL,
     load_fixture,
     load_json,
@@ -253,6 +254,30 @@ async def test_parse_tabs_drops_departed_and_foreign(hass: HomeAssistant) -> Non
     assert [(dep.line, dep.minutes) for dep in deps] == [("1", 0), ("3", 0)]
 
 
+async def test_parse_tabs_keeps_vehicles_on_their_way(hass: HomeAssistant) -> None:
+    """Trips listed with their vehicle on its way (at the stop) stay up to 90 s past."""
+    payload = [
+        tabs(
+            213,
+            [
+                row("1", -85 / 60, "At the stop", delay=0, trip=1, odjazd="*", **ON_THE_WAY),
+                row("2", -95 / 60, "Frozen platform", delay=0, trip=2, odjazd="*", **ON_THE_WAY),
+                # Vehicle assigned, the trip starts here: listed `*` for 31 min.
+                row("3", -40 / 60, "Not on its way", delay=0, trip=3, odjazd="*", tuZidx=0),
+                row("4", -40 / 60, "Timetable only", trip=4, odjazd="*", **ON_THE_WAY),
+            ],
+        ),
+        tabs(214, [row("5", -40 / 60, "Other platform", delay=0, trip=1, **ON_THE_WAY)]),
+    ]
+    deps = parse_tabs(payload, LABELS, NOW, stop_id=83)
+    assert [(dep.line, dep.minutes, dep.leave_in, dep.text) for dep in deps] == [
+        ("1", 0, 0, "*"),
+        ("5", 0, 0, "*"),
+    ]
+    # Nothing confirms that the vehicles are still there (disconnected).
+    assert parse_tabs(payload, LABELS, NOW, stop_id=83, vehicle_grace=False) == []
+
+
 SAME_MINUTE = [("9", -3), ("9", 2), ("44", 1)]
 
 
@@ -316,6 +341,33 @@ async def test_parse_tabs_across_dst_changes(
     ]
     deps = parse_tabs(payload, LABELS, dt_util.as_local(utc_now), stop_id=83)
     assert [(dep.minutes, dep.text, dep.as_dict()["departure"]) for dep in deps] == expected
+
+
+@pytest.mark.parametrize(
+    ("now", "kept"),
+    [
+        # 02:00:10 CET (second pass): 02:58:30 CEST left 100 s ago, 02:59:30 CEST 40 s ago.
+        ("2026-10-25T01:00:10+00:00", "2026-10-25T02:59:30+02:00"),
+        # 03:00:10 CEST: 01:58:30 CET left 100 s ago, 01:59:30 CET 40 s ago.
+        ("2026-03-29T01:00:10+00:00", "2026-03-29T01:59:30+01:00"),
+    ],
+)
+async def test_parse_tabs_vehicles_on_their_way_across_dst_changes(
+    hass: HomeAssistant, now: str, kept: str
+) -> None:
+    """The longer grace of vehicles at the stop runs in real time too."""
+    utc_now = datetime.fromisoformat(now)
+    payload = [
+        tabs(
+            213,
+            [
+                row("9", -100 / 60, "X", now=utc_now, delay=0, trip=1, **ON_THE_WAY),
+                row("9", -40 / 60, "X", now=utc_now, delay=0, trip=2, **ON_THE_WAY),
+            ],
+        )
+    ]
+    deps = parse_tabs(payload, LABELS, dt_util.as_local(utc_now), stop_id=83)
+    assert [dep.as_dict()["departure"] for dep in deps] == [kept]
 
 
 @pytest.mark.parametrize(

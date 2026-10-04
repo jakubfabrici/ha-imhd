@@ -134,7 +134,18 @@ Behaviour in detail:
   board `text` are recomputed from the expected departure time.
 - **Departed rows disappear.** Once the expected time is reached, a
   departure's text is `*` and `minutes` is 0. It is dropped as soon as the
-  expected time is more than 30 seconds in the past.
+  expected time is more than 30 seconds in the past, unless its vehicle is on
+  its way (`previous_stop` is known): imhd.sk lists such a departure until the
+  vehicle has left the stop, usually within a minute, and it stays while
+  listed, at most 90 seconds past the expected time (checked on every update
+  and on the 30-second countdown, so up to 2 minutes when nothing arrives).
+  So the entities don't jump to a later bus and back when imhd.sk moves the
+  prediction on, and departures already due keep their order. A dropped
+  connection keeps such a departure for the next session to confirm. When no
+  departures arrive within 30 seconds of the drop, nothing confirms that the
+  vehicle is still there, and 30 seconds apply. Once a due departure is gone,
+  it doesn't come back when imhd.sk lists it again, unless its time moved on
+  by a minute or more.
 - **Quiet stops are not errors.** At night or in small towns imhd.sk may send
   nothing at all. If no departures arrive within about 6 seconds of
   connecting, the stop counts as empty: the main sensor is `unknown`,
@@ -597,7 +608,7 @@ The `text` field:
 
 | `text` | Meaning |
 |---|---|
-| `*` | Departing now. The expected time has been reached, and the row is dropped once it is more than 30 s in the past. |
+| `*` | Departing now. The expected time has been reached. The row is dropped once it is more than 30 s in the past. A vehicle on its way that imhd.sk still lists is at the stop: its row stays up to 90 s. |
 | `<1 min` | Less than a minute to go. |
 | `4 min` | Whole minutes, from 1 to 60. |
 | `22:15` | More than 60 minutes ahead (the same clock time as `time`). |

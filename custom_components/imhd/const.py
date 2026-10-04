@@ -113,6 +113,11 @@ FIRST_DATA_TIMEOUT: Final = 15.0
 EMPTY_BOARD_AFTER: Final = 6.0
 # A departure is kept until its expected time has passed by more than this.
 DEPARTED_GRACE: Final = timedelta(seconds=30)
+# imhd.sk lists a departure whose vehicle is on its way until the vehicle leaves
+# the stop ("*", seen up to 46 s past its expected time): it is kept while
+# listed, but no longer than this (imhd.sk can keep resending a frozen platform).
+# Checked on feed messages and the countdown tick: up to TICK_INTERVAL later.
+REALTIME_DEPARTED_GRACE: Final = timedelta(seconds=90)
 HTTP_TIMEOUT: Final = 15.0
 
 # Services

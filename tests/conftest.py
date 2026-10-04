@@ -36,6 +36,8 @@ STOP_PAGE_URL = f"{BASE_URL}/ba/online-zastavkova-tabula"
 NEAREST_URL = f"{BASE_URL}/ba/api/cepo"
 SEARCH_URL = f"{BASE_URL}/ba/api/sk/vyhladavanie"
 LABELS = {"213": "A", "214": "B", "215": "C", "216": "D"}
+# Row fields of a trip whose vehicle is on its way (it passed the previous stop).
+ON_THE_WAY = {"tuZidx": 12, "predoslaZidx": 11, "predoslaZstr": "Kozia"}
 
 
 def load_fixture(name: str) -> str:

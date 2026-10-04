@@ -27,9 +27,24 @@ from custom_components.imhd.const import (
     CONF_WALKING_TIME,
     DOMAIN,
 )
-from custom_components.imhd.coordinator import EMPTY_PLATFORM_GRACE, INFO_GRACE, PUBLISH_DELAY
+from custom_components.imhd.coordinator import (
+    EMPTY_PLATFORM_GRACE,
+    INFO_GRACE,
+    PUBLISH_DELAY,
+    RECONNECT_GRACE,
+)
 
-from .conftest import NOW, FakeFeed, load_fixture, load_json, row, sample_tabs, setup_entry, tabs
+from .conftest import (
+    NOW,
+    ON_THE_WAY,
+    FakeFeed,
+    load_fixture,
+    load_json,
+    row,
+    sample_tabs,
+    setup_entry,
+    tabs,
+)
 
 ALERT = "Linka 3: výluka."
 ITEXT = ["", "", ALERT + " " * 20, ""]
@@ -38,9 +53,10 @@ MAIN = "sensor.hodzovo_departures"
 NEXT = "sensor.hodzovo_next_departure"
 FIRST = "sensor.hodzovo_departure_1"
 LEAVE = "binary_sensor.hodzovo_time_to_leave"
+NEXT_LINE = "sensor.hodzovo_next_line"
 PER_DEPARTURE = (
     NEXT,
-    "sensor.hodzovo_next_line",
+    NEXT_LINE,
     "sensor.hodzovo_delay",
     FIRST,
     "sensor.hodzovo_departure_2",
@@ -554,6 +570,327 @@ async def test_vehicle_moves_are_written_with_the_tick(
     assert main["last_update"] == first_update
 
 
+async def test_vehicle_at_the_stop_does_not_flicker(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A vehicle on its way stays while imhd.sk lists it: it is still at the stop.
+
+    Recorded at night: imhd.sk listed the N53 (`*`) 46 s past its expected time,
+    then moved the prediction on. Dropping it 30 s past its time made Next line
+    go N53 -> N80 -> N53.
+    """
+    at_stop = tabs(
+        213, [row("N53", -15 / 60, "Vajnory", delay=0, trip=1, odjazd="*", **ON_THE_WAY)]
+    )
+    fake_feed.initial = [
+        at_stop,
+        tabs(
+            216,
+            [
+                row("N80", -1 / 60, "Cintorín", delay=1, trip=2, odjazd="*", **ON_THE_WAY),
+                row("N80", 58, "Cintorín", delay=0, trip=3),
+            ],
+        ),
+    ]
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_info([])
+    await advance(hass, freezer, 1)
+    assert hass.states.get(NEXT_LINE).state == "N53"
+    changes = record(hass, MAIN, FIRST, NEXT_LINE, LEAVE)
+
+    await advance(hass, freezer, 21)
+    listener.feed_tabs([at_stop])  # resent unchanged
+    await advance(hass, freezer, 9)  # the tick at 21:00:30, 45 s past its time
+    moved = tabs(213, [row("N53", 15 / 60, "Vajnory", delay=0, trip=1, odjazd="*", **ON_THE_WAY)])
+    listener.feed_tabs([moved])  # the prediction moved on: the bus has not left
+    await advance(hass, freezer, 2)
+    assert [states(changes[entity]) for entity in (MAIN, FIRST, NEXT_LINE, LEAVE)] == [[]] * 4
+    assert hass.states.get(FIRST).attributes["text"] == "*"
+
+    listener.feed_tabs([tabs(213, [row("N53", 30, "Vajnory", delay=0, trip=4)])])  # it left
+    await advance(hass, freezer, 1)
+    assert states(changes[NEXT_LINE]) == ["N80"]
+    assert departure_lines(hass) == ["N80", "N53", "N80"]
+
+
+@pytest.mark.parametrize("due_since", [309, 40])
+async def test_trip_not_started_is_not_kept(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    *,
+    due_since: int,
+) -> None:
+    """A vehicle assigned to a trip that hasn't started yet isn't at the stop.
+
+    Recorded at night (309 s past its time on connecting): imhd.sk listed the
+    N44 (`*`, vehicle assigned, its trip starting here) for 31 minutes while the
+    vehicle drove other trips. Kept like a vehicle at the stop, it was the next
+    departure, and Time to leave stayed on.
+    """
+    ghost = row(
+        "N44", -due_since / 60, "Koliba", delay=0, trip=-18185642, issi="1:6716", odjazd="*"
+    )
+    ghost.update(tuZidx=0, casCP=ghost["cas"] + 15000)  # cas: the timetable time - 15 s
+    platform_a = tabs(213, [ghost])
+    fake_feed.initial = [
+        platform_a,
+        tabs(216, [row("N95", 23, "Cintorín", delay=0, trip=2, **ON_THE_WAY)]),
+    ]
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_info([])
+    await advance(hass, freezer, 1)
+    assert departure_lines(hass) == ["N95"]
+    assert (hass.states.get(NEXT_LINE).state, hass.states.get(LEAVE).state) == ("N95", STATE_OFF)
+    changes = record(hass, NEXT_LINE, LEAVE)
+
+    for _ in range(4):
+        await advance(hass, freezer, 60)
+        listener.feed_tabs([platform_a])  # imhd.sk keeps listing it
+    assert [states(changes[entity]) for entity in (NEXT_LINE, LEAVE)] == [[], []]
+    assert departure_lines(hass) == ["N95"]
+
+
+def waiting_board(n53_at: float = -15) -> list[dict[str, Any]]:
+    """Return the N53 at the stop (since 20:59:45), and the N80 at 21:05."""
+    n53 = row("N53", n53_at / 60, "Vajnory", delay=0, trip=1, odjazd="*", **ON_THE_WAY)
+    return [tabs(213, [n53]), tabs(216, [row("N80", 5, "Cintorín", delay=0, trip=2, **ON_THE_WAY)])]
+
+
+def changed_at(changes: list[tuple[State, State]]) -> list[tuple[str, float]]:
+    """Return the new states with when they changed (seconds after NOW)."""
+    return [
+        (new.state, (new.last_changed - NOW).total_seconds())
+        for old, new in changes
+        if old is None or old.state != new.state
+    ]
+
+
+@pytest.mark.parametrize(
+    ("down", "up", "n53_at", "next_line"),
+    [
+        # Back within seconds (or `imhd.refresh`): the next session confirms it,
+        # across the countdown tick at 21:00:30 or not.
+        (28, 31, -15, []),
+        (24, 31, -15, []),
+        (31, 38, -15, []),
+        # It left meanwhile: it goes with the next session's departures.
+        (31, 58, None, [("N80", 58)]),
+        # No departures for RECONNECT_GRACE: it goes then, not at a later tick,
+        # and the next session listing it doesn't bring it back, also with its
+        # prediction moved on (replayed: N95 -> N55 -> N95)...
+        (24, 60, -15, [("N80", 24 + RECONNECT_GRACE)]),
+        (31, 65, -15, [("N80", 31 + RECONNECT_GRACE)]),
+        (31, 65, 44, [("N80", 31 + RECONNECT_GRACE)]),
+        # ... unless by a minute or more: a new time.
+        (31, 65, 45, [("N80", 31 + RECONNECT_GRACE), ("N53", 65)]),
+    ],
+)
+async def test_vehicle_at_the_stop_across_a_reconnect(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    *,
+    down: int,
+    up: int,
+    n53_at: float | None,
+    next_line: list[tuple[str, float]],
+) -> None:
+    """A vehicle at the stop is kept for the next session to confirm, for a while.
+
+    Dropped at the disconnect, the N53 came back with the next session a few
+    seconds later (Next line N53 -> N80 -> N53). Dropped at the first countdown
+    tick 5 s after the disconnect, how an outage ended depended on the tick, and
+    the next session listing it brought it back too.
+    """
+    fake_feed.initial = waiting_board()
+    await setup_entry(hass, config_entry)
+    feed = fake_feed.instances[0]
+    feed.listener.feed_info([])
+    await advance(hass, freezer, 1)
+    assert hass.states.get(NEXT_LINE).state == "N53"
+    changes = record(hass, MAIN, FIRST, NEXT_LINE, LEAVE)
+
+    await advance(hass, freezer, down - 1)
+    feed.disconnect()
+    await advance(hass, freezer, up - down)
+    board = waiting_board(n53_at or 0)
+    if n53_at is None:
+        board[0]["tab"] = [row("N53", 30, "Vajnory", delay=0, trip=3)]
+    feed.listener.feed_tabs(board)  # the next session (before `feed_connected`)
+    feed.listener.feed_connected()
+    feed.listener.feed_info([])
+    await advance(hass, freezer, 70 - up)  # 21:01:10, 85 s past its time
+    assert changed_at(changes[NEXT_LINE]) == next_line
+    if not next_line:
+        assert [states(changes[entity]) for entity in (MAIN, FIRST, LEAVE)] == [[]] * 3
+
+
+@pytest.mark.parametrize(
+    "gone",
+    [
+        # imhd.sk listed it timetable-only for a while: such a row has 30 s.
+        tabs(213, [row("N53", -15 / 60, "Vajnory", trip=1, odjazd="*", tuZidx=12)]),
+        # The platform sent empty for longer than EMPTY_PLATFORM_GRACE.
+        tabs(213, []),
+    ],
+    ids=["timetable only", "platform emptied"],
+)
+async def test_departure_dropped_does_not_come_back(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+    *,
+    gone: dict[str, Any],
+) -> None:
+    """A departure dropped past its time stays dropped when listed again.
+
+    Listed with its vehicle on its way again, 50 s past its time, the N53 came
+    back (Next line N53 -> N80 -> N53).
+    """
+    fake_feed.initial = waiting_board()
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_info([])
+    await advance(hass, freezer, 20)
+    changes = record(hass, NEXT_LINE, LEAVE)
+
+    listener.feed_tabs([gone])  # 21:00:20, 35 s past its time
+    await advance(hass, freezer, 15)
+    assert hass.states.get(NEXT_LINE).state == "N80"
+    listener.feed_tabs(waiting_board())  # 21:00:35, listed with its vehicle again
+    await advance(hass, freezer, 30)  # the tick at 21:01:00
+    assert [states(changes[entity]) for entity in (NEXT_LINE, LEAVE)] == [["N80"], [STATE_OFF]]
+
+
+async def test_departed_vehicle_not_kept_while_disconnected(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Only a session sending departures confirms that a vehicle is still at the stop.
+
+    Disconnected for longer than RECONNECT_GRACE, the 4 goes 30 s after its time
+    like any departure, and the next session listing it doesn't bring it back.
+    """
+    board = sample_tabs()
+    board[1]["tab"][0].update(ON_THE_WAY)  # the 4, due at 21:01
+    fake_feed.initial = board
+    await setup_entry(hass, config_entry)
+    feed = fake_feed.instances[0]
+    feed.listener.feed_info([])
+    await advance(hass, freezer, 10)
+    changes = record(hass, NEXT_LINE)
+
+    feed.disconnect()  # 21:00:10
+    await advance(hass, freezer, 110)  # the tick at 21:02:00, 60 s past its time
+    assert hass.states.get(NEXT_LINE).state == "9"
+    feed.listener.feed_connected()
+    await hass.async_block_till_done()
+    feed.listener.feed_tabs(board)  # it is still listed
+    await advance(hass, freezer, 1)
+    assert states(changes[NEXT_LINE]) == ["9"]
+
+
+async def test_unload_while_disconnected(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+) -> None:
+    """Unloading during RECONNECT_GRACE leaves no timer (the test harness checks)."""
+    await setup_entry(hass, config_entry)
+    fake_feed.instances[0].disconnect()
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_vehicles_at_the_stop_keep_their_order(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Due departures keep their place while imhd.sk moves a waiting one's prediction.
+
+    Recorded at night: the N95 and the N70 were both at the stop (`*`), and
+    imhd.sk moved the N95's prediction to the N70's minute. Sorted by it, Next
+    line went N95 -> N70 -> N95 -> N44 as they left.
+    """
+
+    def n95(minutes: float) -> dict[str, Any]:
+        departure = row("N95", minutes, "Cintorín", delay=3, trip=2, odjazd="*", **ON_THE_WAY)
+        return tabs(216, [departure])
+
+    fake_feed.initial = [
+        tabs(213, [row("N70", 0, "Vajnory", delay=3, trip=1, odjazd="*", **ON_THE_WAY)]),
+        n95(-0.5),
+        tabs(214, [row("N44", 12, "Rača", delay=0, trip=3)]),
+    ]
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    assert departure_lines(hass) == ["N95", "N70", "N44"]
+    changes = record(hass, NEXT_LINE)
+
+    await advance(hass, freezer, 17)
+    listener.feed_tabs([n95(0)])  # moved to the N70's minute: the bus still waits
+    await advance(hass, freezer, 2)
+    assert departure_lines(hass) == ["N95", "N70", "N44"]
+    listener.feed_tabs([tabs(213, [row("N70", 30, "Vajnory", delay=0, trip=4)])])  # it left
+    await advance(hass, freezer, 3)
+    listener.feed_tabs([tabs(216, [row("N95", 30, "Cintorín", delay=0, trip=5)])])  # it left
+    await advance(hass, freezer, 2)
+    assert states(changes[NEXT_LINE]) == ["N44"]
+
+
+async def test_due_departure_moved_ahead_is_sorted_by_its_new_time(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A due departure whose vehicle starts the trip late doesn't keep its place.
+
+    Due at its timetable time, the 9 stayed ahead of the 4 after its prediction
+    moved 2 minutes on, although the 4 leaves earlier (Next line 4 -> 9 -> 4).
+    """
+    fake_feed.initial = [
+        tabs(213, [row("9", -10 / 60, "Karlova Ves", trip=7, odjazd="*")]),  # timetable only
+        tabs(214, [row("4", 100 / 60, "Dúbravka", delay=0, trip=8, **ON_THE_WAY)]),  # 21:01:40
+    ]
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_info([])
+    await advance(hass, freezer, 5)
+    assert departure_lines(hass) == ["9", "4"]
+    changes = record(hass, NEXT_LINE)
+
+    late = row("9", 125 / 60, "Karlova Ves", delay=2, trip=7, **ON_THE_WAY)  # 21:02:05
+    listener.feed_tabs([tabs(213, [late])])  # 21:00:05, its vehicle starts the trip
+    await advance(hass, freezer, 25)  # the tick at 21:00:30: both in 1 min
+    assert departure_lines(hass) == ["4", "9"]
+    await advance(hass, freezer, 90)  # the ticks up to 21:02:00
+    assert departure_lines(hass) == ["4", "9"]
+    assert states(changes[NEXT_LINE]) == ["4"]
+
+
 BURST = (MAIN, NEXT, FIRST, LEAVE)
 
 
@@ -618,6 +955,36 @@ async def test_empty_platform_burst_does_not_flicker(
     assert dict(changes) == {}
 
 
+async def test_empty_platform_burst_keeps_a_vehicle_at_the_stop(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A vehicle at the stop past its time stays through an empty-platform burst.
+
+    The empty platform used to forget that the N53 was on its way: it went at
+    once and the refill brought it back (Next line N53 -> N80 -> N53 in 0.6 s).
+    """
+    fake_feed.initial = waiting_board()
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_info([])
+    await advance(hass, freezer, 35)  # 21:00:35, 50 s past its time
+    assert hass.states.get(NEXT_LINE).state == "N53"
+    changes = record(hass, *BURST, NEXT_LINE)
+
+    listener.feed_tabs([tabs(213, [])])  # every platform empty, one per message
+    listener.feed_tabs([tabs(216, [])])
+    await hass.async_block_till_done()
+    for element in waiting_board():  # refilled 0.6 s later
+        listener.feed_tabs([element])
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE + 2)
+
+    assert dict(changes) == {}
+
+
 async def test_platforms_that_stay_empty_clear_after_the_grace(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
@@ -642,16 +1009,28 @@ async def test_platforms_that_stay_empty_clear_after_the_grace(
     assert hass.states.get(MAIN).attributes["departures"] == []
 
 
+@pytest.mark.parametrize(
+    ("extra", "at_the_tick"),
+    [
+        ({}, ["9", "X13", "N33"]),
+        # Maybe still at the stop: it goes with the platform at the latest.
+        (ON_THE_WAY, ["4", "9", "X13", "N33"]),
+    ],
+    ids=["timetable", "on its way"],
+)
 async def test_departed_rows_dropped_while_a_platform_is_emptied(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
     fake_feed: type[FakeFeed],
     mock_http: AiohttpClientMocker,
     freezer: FrozenDateTimeFactory,
+    *,
+    extra: dict[str, Any],
+    at_the_tick: list[str],
 ) -> None:
     """The countdown tick still drops departed rows of a platform kept for the grace."""
     board = sample_tabs()
-    board[1]["tab"][0] = row("4", 88 / 60, "Dúbravka", delay=0, trip=3)  # 21:01:28
+    board[1]["tab"][0] = row("4", 88 / 60, "Dúbravka", delay=0, trip=3, **extra)  # 21:01:28
     fake_feed.initial = board
     await setup_entry(hass, config_entry)
     listener = fake_feed.instances[0].listener
@@ -659,7 +1038,7 @@ async def test_departed_rows_dropped_while_a_platform_is_emptied(
 
     listener.feed_tabs([tabs(214, [])])  # B: the 4 (left 29 s ago) and the N33
     await advance(hass, freezer, 3)  # the tick at 21:02:00
-    assert departure_lines(hass) == ["9", "X13", "N33"]
+    assert departure_lines(hass) == at_the_tick
     await advance(hass, freezer, EMPTY_PLATFORM_GRACE)
     assert departure_lines(hass) == ["9", "X13"]
 
