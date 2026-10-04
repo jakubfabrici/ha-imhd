@@ -33,11 +33,13 @@ from .const import (
     CONF_STOP_CITY,
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    CONF_TIMETABLE,
     CONF_WALKING_TIME,
     DATA_YAML_IMPORTED,
     DEFAULT_DEPARTURE_SENSORS,
     DEFAULT_LEAVE_WINDOW,
     DEFAULT_MAX_DEPARTURES,
+    DEFAULT_TIMETABLE,
     DEFAULT_WALKING_TIME,
     DOMAIN,
     FIRST_DATA_TIMEOUT,
@@ -48,7 +50,7 @@ from .const import (
     MAX_LEAVE_WINDOW,
     MAX_WALKING_TIME,
 )
-from .coordinator import ImhdConfigEntry, ImhdCoordinator, as_list
+from .coordinator import ImhdConfigEntry, ImhdCoordinator, as_list, async_release_timetables
 from .models import StopInfo
 from .services import async_setup_services
 
@@ -94,6 +96,7 @@ STOP_SCHEMA = vol.Schema(
         vol.Optional(CONF_DEPARTURE_SENSORS, default=DEFAULT_DEPARTURE_SENSORS): _bounded(
             0, MAX_DEPARTURE_SENSORS
         ),
+        vol.Optional(CONF_TIMETABLE, default=DEFAULT_TIMETABLE): cv.boolean,
     }
 )
 
@@ -199,6 +202,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ImhdConfigEntry) -> boo
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ImhdConfigEntry) -> None:
-    """Clean up repairs issues of a removed entry."""
+    """Clean up repairs issues and scheduled departures of a removed entry."""
     for issue in (ISSUE_REJECTED, ISSUE_YAML_REMOVED):
         ir.async_delete_issue(hass, DOMAIN, f"{issue}_{entry.entry_id}")
+    async_release_timetables(hass)

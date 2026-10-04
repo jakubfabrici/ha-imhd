@@ -50,7 +50,13 @@ a scraper or a browser.
 ## Features
 
 - **Push updates** over the socket.io feed that imhd.sk's own online departure
-  boards use. There is no polling and no HTML scraping of departures.
+  boards use. There is no polling for realtime data.
+- **Scheduled departures beyond the realtime horizon.** The feed lists only
+  about the next two departures of each line and direction, up to about three
+  hours ahead, so a small-town stop may show just one or two. The integration
+  fills the list from the stop's timetable on imhd.sk, fetched about every
+  2 hours (a date's timetable rarely changes). See
+  [Scheduled departures](#scheduled-departures).
 - **All imhd.sk sections**: 21 cities and regions plus the country-wide
   *Slovensko a svet* section. See [Supported cities](#supported-cities).
 - **Realtime where imhd.sk tracks vehicles.** Vehicle-tracked departures come with
@@ -89,13 +95,15 @@ from its imhd.sk board page. It reads them again after a restart, a reload or
 `imhd.refresh`. It then opens **one** socket.io connection for the stop and
 subscribes to the stop's departure board, like an open imhd.sk board in a
 browser. imhd.sk pushes the departures of each platform, the details of the
-vehicles on the board and the stop's info texts.
+vehicles on the board and the stop's info texts. About every 2 hours the
+integration also reads the stop's timetable page, for the departures the feed
+doesn't list yet.
 
 ```mermaid
 flowchart LR
     subgraph imhd["imhd.sk"]
         SIO["Realtime feed<br/>(socket.io)"]
-        WEB["Board page, search,<br/>nearest stops (HTTP)"]
+        WEB["Board page, search,<br/>nearest stops, timetable (HTTP)"]
     end
     subgraph ha["Home Assistant"]
         FEED["Feed client<br/>1 connection per stop"]
@@ -104,7 +112,7 @@ flowchart LR
         ACT["Actions<br/>get_departures, find_stops"]
     end
     SIO -- "departures, vehicles, info texts (push)" --> FEED --> COORD --> ENT
-    WEB -- "setup, refresh, stop search" --> COORD
+    WEB -- "setup, refresh, stop search,<br/>timetable every ~2 h" --> COORD
     COORD --> ACT
 ```
 
@@ -163,6 +171,65 @@ Behaviour in detail:
 - **Startup doesn't block.** Setup waits up to 15 seconds for the first data and
   continues in the background. If imhd.sk is unreachable, the stop starts from
   the details saved when it was added and connects when imhd.sk is back.
+
+### Scheduled departures
+
+imhd.sk's realtime feed sends about the next two departures of each line and
+destination per platform, up to about three hours ahead. At a busy stop that
+fills the list, but at a small-town stop with one or two lines the list would
+show only one or two departures. So the integration also reads the stop's
+timetable on imhd.sk (the "Všetky odchody zo zastávky" page, all departures of
+the day) and adds the departures the feed doesn't list yet. Turn this off with
+the `timetable` option.
+
+- **The feed wins.** A departure from the timetable is left out when the feed
+  lists the same trip: the same line at the same scheduled time, even when it
+  is delayed. If a line leaves twice in the same minute, the platform and then
+  the destination decide; if both trips also share the platform and
+  destination, each trip the feed lists hides one. A departure the feed listed
+  stays out after the feed drops it (it left early or was cancelled), also
+  after a reload and when its timetable page is fetched only later.
+- **They look like the feed's timetable departures**: `source: timetable`,
+  `realtime: false`, `delay: null`, `trip_id: null` and `~` in front of the
+  board `text`. The countdown runs like for any other departure, they pass the
+  same filters, walking time and sorting, and they are dropped 30 seconds after
+  their time.
+- **Platforms.** The timetable page numbers some stops' platforms its own way
+  (1–4 where the board says 9–12). The integration learns which is which from
+  the departures the feed lists, and then shows the board's label. Until then
+  such a departure shows the page's label, has `platform_id: null` and doesn't
+  pass a `platforms` filter. In Bratislava the labels are the same from the
+  start.
+- **Destinations.** The page writes "Červený most cez Kramáre" where the feed
+  writes "Kramáre ► Červený most". Once the feed has listed a line to that
+  destination, its text is used for the timetable departures too. A
+  `direction` filter matches the page's text as well as the feed's, for both
+  kinds of departures: `Petržalka` keeps line N80, which the page sends to
+  "Petržalka, Kapitulský dvor" and the feed to "Kapitulský dvor". Words only
+  the feed has (a terminal such as "Pri kríži") match the timetable departures
+  of a line once the feed has listed that line.
+- **Summer time.** On the night summer time ends, the page lists 02:00–02:59
+  twice. Both runs are kept apart, so every departure shows once.
+- **Fetched rarely.** imhd.sk renders the page for every request (up to 4
+  seconds for a busy stop) and sends no cache headers, so the integration keeps
+  the page in memory. A date's timetable rarely changes, so after fetching
+  today's page within a minute after Home Assistant starts, the integration
+  fetches it again only about every 2 hours (1¾ to 2¼ hours after that page
+  was last fetched, at random). Tomorrow's page is fetched once, early, when
+  the list runs short, usually in the evening; this doesn't put off today's
+  refresh. After midnight it becomes today's page. A page missing like this is
+  fetched within 15 minutes, at random, so that stops don't all ask at the same
+  moment. A stop's page is fetched at most once every 5 minutes, also when you
+  configured the stop more than once or reloaded it. That is about 13 requests
+  a day per stop. Nothing is fetched while the stop's entities are unavailable
+  (imhd.sk refused the realtime connection or can't be reached); once they are
+  back, the next fetch comes within 15 minutes, at random. After an error the
+  integration keeps the old departures and retries after 5, 10, 20, 40 and then
+  every 60 minutes. When only tomorrow's page fails, today's isn't fetched more
+  often than usual and no warning is logged. It waits 24 hours when imhd.sk has
+  no timetable for the stop: it answered "not found" before any page of the
+  stop was fetched, or three times in a row. The realtime departures never wait
+  for the timetable.
 
 ## Requirements
 
@@ -230,6 +297,7 @@ imhd: !include imhd.yaml
   walking_time: 3               # 0..120 minutes to walk to the stop
   time_to_leave_window: 2       # 0..60, "Time to leave" is on while 0 <= leave_in <= this
   departure_sensors: 3          # 0..10 extra "Departure N" sensors
+  timetable: true               # add scheduled departures beyond the realtime feed (default)
 
 - name: Hurbanova
   city: za
@@ -249,11 +317,12 @@ A longer annotated example with three cities is in
 | `platforms` | list or comma-separated string | all | Only departures from these platforms: labels as shown on imhd.sk (`A`, `B`, …) or platform ids (`2474`). `"*"` means all. |
 | `lines` | list or comma-separated string | all | Only these lines. Exact match, case-insensitive. Quote numbers: `["9", "X13"]`. |
 | `exclude_lines` | list or comma-separated string | none | Never show these lines. `"►"` hides unnumbered service trips such as depot runs. |
-| `direction` | string or list | all | Only departures whose headsign (`destination`) or terminal stop (`terminal`) contains one of these texts. Case and diacritics are ignored (`petrzalka` matches `Petržalka`). A single string is one text, and commas in it are kept. |
+| `direction` | string or list | all | Only departures whose headsign (`destination`), terminal stop (`terminal`) or destination on the timetable page contains one of these texts (see [Scheduled departures](#scheduled-departures)). Case and diacritics are ignored (`petrzalka` matches `Petržalka`). A single string is one text, and commas in it are kept. |
 | `max_departures` | int, 1–30 | `10` | How many departures the main sensor lists. |
 | `walking_time` | int, 0–120 min | `0` | Time you need to reach the stop. When it is above 0, departures you can't catch any more (`leave_in < 0`) are hidden. |
 | `time_to_leave_window` | int, 0–60 min | `2` | **Time to leave** is on while `0 ≤ leave_in ≤ window` for the next catchable departure. |
 | `departure_sensors` | int, 0–10 | `3` | Number of `Departure 1` … `Departure N` sensors. |
+| `timetable` | bool | `true` | Add departures from the stop's timetable on imhd.sk to the ones the realtime feed lists. The feed lists only about two per line and direction, up to about three hours ahead. The timetable page is fetched about every 2 hours. See [Scheduled departures](#scheduled-departures). |
 
 #### The `stop` value
 
@@ -310,9 +379,10 @@ search for **IMHD.sk Departures**.
    ![Config flow: pick the stop](docs/images/config-flow-stop.png)
 
 3. **Settings.** Set the name, platforms, lines, excluded lines, direction,
-   number of departures, walking time and time-to-leave window (in minutes)
-   and the number of per-departure sensors. These are the same options as in
-   YAML. The form links to the stop's imhd.sk board so you can compare.
+   number of departures, walking time and time-to-leave window (in minutes),
+   the number of per-departure sensors and whether to add scheduled departures.
+   These are the same options as in YAML. The form links to the stop's imhd.sk
+   board so you can compare.
 
    ![Config flow: settings](docs/images/config-flow-settings.png)
 
@@ -482,6 +552,7 @@ departures:
     leave_in: 1
     delay: 1
     realtime: true
+    source: realtime
     platform: A
     vehicle: "6127"
     low_floor: true
@@ -512,6 +583,7 @@ departures:
     leave_in: 10
     delay: null              # timetable-only departure
     realtime: false
+    source: realtime         # listed by the realtime feed
     platform: A
     vehicle: null
     low_floor: null          # unknown
@@ -552,6 +624,11 @@ friendly_name: Hodzovo Departures
 `binary_sensor.hodzovo_time_to_leave` is `on` here, because the 44 at 08:02 has
 `leave_in: 1` and `time_to_leave_window` is 2.
 
+All these departures come from the realtime feed (`source: realtime`). With a
+longer list, or at a smaller stop, departures from the timetable page follow
+the ones the feed lists. They have `source: timetable`, `realtime: false`,
+`trip_id: null` and a `text` like `~23:10`.
+
 ### Attributes
 
 | Attribute | Type | Description |
@@ -591,11 +668,12 @@ the second.
 | `leave_in` | int | `1` | `minutes - walking_time`: minutes until you have to leave. Departures with a negative value are hidden when `walking_time` is above 0. |
 | `delay` | int / null | `1` | imhd.sk's delay in whole minutes. Positive is late, negative is early, 0 is on time. `null` when the departure isn't vehicle-tracked. |
 | `realtime` | bool | `true` | `true` when imhd.sk ties the departure to a tracked vehicle, including a vehicle that is assigned but hasn't started the trip yet. `false` for timetable-only departures. |
-| `platform` | string | `A` | Platform label. Falls back to the platform id when the stop has no labels (`2474`). |
-| `platform_id` | string / null | `"213"` | imhd.sk platform id. |
+| `source` | string | `realtime` | Where the departure comes from. `realtime`: imhd.sk's realtime feed, vehicle-tracked or not. `timetable`: the stop's timetable page, for departures the feed doesn't list yet (see [Scheduled departures](#scheduled-departures)). These have `realtime: false` and no `delay`, `vehicle` or `trip_id`. |
+| `platform` | string | `A` | Platform label. Falls back to the platform id when the stop has no labels (`2474`). A departure from the timetable page whose platform isn't known yet has the page's own label, or none. |
+| `platform_id` | string / null | `"213"` | imhd.sk platform id. `null` for a departure from the timetable page whose platform isn't known yet. |
 | `vehicle` | string / null | `"6127"` | Vehicle number, for vehicle-tracked departures only. |
 | `vehicle_type` | string / null | `SOR TNS 12` | Vehicle model, once imhd.sk has sent the vehicle details. |
-| `low_floor` | bool / null | `true` | Low-floor vehicle. `null` when unknown, which includes every timetable-only departure. |
+| `low_floor` | bool / null | `true` | Low-floor vehicle. `null` when unknown, which includes the feed's timetable-only departures. For departures from the timetable page it is the timetable's low-floor mark, where the city publishes one (Bratislava does). |
 | `air_conditioning` | bool / null | `true` | Air-conditioned vehicle. `null` when unknown. |
 | `stuck` | bool | `false` | imhd.sk flags the trip as stuck. |
 | `text` | string | `4 min` | Countdown text as on the imhd.sk board, recomputed locally. See the table below. |
@@ -612,7 +690,7 @@ The `text` field:
 | `<1 min` | Less than a minute to go. |
 | `4 min` | Whole minutes, from 1 to 60. |
 | `22:15` | More than 60 minutes ahead (the same clock time as `time`). |
-| `~` in front | Timetable-only departure (`realtime: false`), for example `~13 min` or `~23:10`. `*` never gets a `~`. |
+| `~` in front | Timetable-only departure (`realtime: false`), including every departure from the timetable page, for example `~13 min` or `~23:10`. `*` never gets a `~`. |
 
 ## Templating quick start
 
@@ -1181,7 +1259,7 @@ the entity attributes, `departure` is imhd.sk's prediction to the second.
 | `entity_id` | one of these two | Any IMHD entity of the stop, usually `sensor.<stop>_departures`. |
 | `config_entry_id` | one of these two | The stop's config entry. |
 | `line` | no | List of lines, for example `["44", "X13"]`. Exact match, case-insensitive. |
-| `direction` | no | Text the headsign (`destination`) or terminal stop (`terminal`) must contain. Case and diacritics are ignored. |
+| `direction` | no | Text the headsign (`destination`), terminal stop (`terminal`) or destination on the timetable page must contain. Case and diacritics are ignored. |
 | `limit` | no | Maximum number of departures, 1–30. Defaults to the stop's `max_departures`. |
 | `min_minutes` | no | Skip departures leaving in less than this many minutes (default 0). |
 
@@ -1404,8 +1482,10 @@ logger:
 **How do I download diagnostics?**
 On **Settings → Devices & services → IMHD.sk Departures**, open the **⋮** menu
 of the stop's entry → **Download diagnostics**. The file contains the stop, your
-options, the connection state, the current departures and a shortened copy of
-the last data from imhd.sk. Please attach it to bug reports, after checking it
+options, the connection state, the current departures, a shortened copy of the
+last data from imhd.sk and the state of the timetable (last fetch, departures
+per day, last error, next attempt or whether it is paused). Please attach it to
+bug reports, after checking it
 for anything you consider private.
 
 **The sensors are unavailable / `binary_sensor.hodzovo_realtime_connected` is off.**
@@ -1434,7 +1514,15 @@ any other line.
 The departure is timetable-only, because imhd.sk has no vehicle for it. This
 depends on the city, operator and trip. Vehicle-tracked departures were seen
 only in Bratislava and Prešov, see [Supported cities](#supported-cities). The
-time shown is the scheduled time.
+time shown is the scheduled time. Departures with `source: timetable` come from
+the stop's timetable page: the realtime feed doesn't list them yet.
+
+**A departure from the timetable page doesn't pass my platform filter.**
+The timetable page numbers some stops' platforms its own way. Until the
+realtime feed has listed a departure from that platform, the integration
+doesn't know which board platform the page means, and leaves the departure out
+rather than show it on the wrong platform. This sorts itself out once the feed
+lists departures from the platform.
 
 **Why does `platform` show a number like `2474`?**
 The stop has no platform labels on imhd.sk (Košice, Žilina and many other
@@ -1463,9 +1551,10 @@ template:
 Check your filters (`platforms`, `lines`, `exclude_lines`, `direction`) and
 `walking_time`: with a walking time, departures you can't reach in time are
 hidden on purpose. `max_departures` limits the list in the attributes. Use
-`imhd.get_departures` with a higher `limit` to see more. imhd.sk sends only
-about the next two departures of each line and destination per platform, so a
-long list can skip later runs of a frequent line.
+`imhd.get_departures` with a higher `limit` to see more. imhd.sk's feed sends
+only about the next two departures of each line and destination per platform.
+The rest comes from the stop's timetable page, unless you turned the
+`timetable` option off: then a long list can skip later runs of a frequent line.
 
 **What is line `►`?**
 An unnumbered service trip, such as a vehicle going to the depot. Hide it with
@@ -1545,6 +1634,11 @@ template:
 The complete version, with `dep1_*` … `dep5_*` (line, dest, min, time), is in
 [`examples/templates/template_sensors.yaml`](examples/templates/template_sensors.yaml).
 
+An old scraper may have read imhd.sk's "all departures from the stop" page to
+show departures hours ahead. The integration reads that page too, for the
+departures the realtime feed doesn't list yet (the `timetable` option, on by
+default).
+
 ## Disclaimer & fair use
 
 - **Unofficial.** This project is not affiliated with, endorsed by or supported
@@ -1560,13 +1654,16 @@ The complete version, with `dep1_*` … `dep5_*` (line, dest, min, time), is in
   shared feed, or on a display for the public. For anything beyond personal
   use, ask imhd.sk first (imhd@imhd.sk).
 - **Be gentle.** The integration opens **one** connection per configured stop,
-  like an open departure board on the imhd.sk website. It uses HTTP only to
-  look up stops: at setup, restart or reload, on `imhd.refresh` and for stop
-  searches. Configure only the stops you actually use, keep their number
-  reasonable (a handful, not dozens), and don't use the integration or its code
-  for polling or bulk downloads. imhd.sk limits connections and may refuse them
-  or block addresses that misbehave. If imhd.sk asks for changes, they will be
-  made.
+  like an open departure board on the imhd.sk website. It uses HTTP to look up
+  stops (at setup, restart or reload, on `imhd.refresh` and for stop searches)
+  and to read the stop's timetable page: about every 2 hours (tomorrow's page
+  once more when the list runs short), at most once every 5 minutes per stop,
+  about 13 requests a day. Turn the `timetable` option off if you don't need
+  departures beyond the realtime feed. Configure only the stops you actually
+  use, keep their number reasonable (a handful, not dozens), and don't use the
+  integration or its code for polling or bulk downloads. imhd.sk limits
+  connections and may refuse them or block addresses that misbehave. If
+  imhd.sk asks for changes, they will be made.
 - **Privacy.** The integration talks only to imhd.sk. It sends the stop you
   chose. Your home location is sent only when you ask for nearby stops, in the
   config flow or with `imhd.find_stops` without coordinates. Nothing is sent

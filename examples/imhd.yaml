@@ -19,7 +19,8 @@
 # /zastavka/... stop page) or the exact stop name ("Hodžovo nám.").
 #
 # Personal use only (imhd.sk terms) - configure only the stops you need; every
-# stop keeps one connection to imhd.sk open.
+# stop keeps one connection to imhd.sk open, and its timetable page is fetched
+# about every 2 hours (see `timetable` below).
 
 # --- Bratislava: Hodzovo namestie (stop 83) ---------------------------------
 # A central trolleybus/bus hub. We only care about platforms A and B and we
@@ -34,6 +35,10 @@
   time_to_leave_window: 2       # binary_sensor.hodzovo_time_to_leave is on 3-5 min before departure
   max_departures: 10            # 1..30, length of the `departures` attribute
   departure_sensors: 3          # creates sensor.hodzovo_departure_1 .. _3
+  timetable: true               # default: the realtime feed lists only ~2 departures per
+                                # line and direction (up to ~3 h ahead); the rest of the
+                                # list comes from the stop's timetable page, fetched about
+                                # every 2 h (source: timetable). false = feed only.
 
 # --- Kosice: Namestie osloboditelov (stop 1130) -----------------------------
 # Only trams 1 and 3 heading to Vazecka. Lines are strings - quote them.

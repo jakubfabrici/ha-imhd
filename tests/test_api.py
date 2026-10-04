@@ -497,6 +497,7 @@ def test_departure_dict_keys() -> None:
         "leave_in",
         "delay",
         "realtime",
+        "source",
         "platform",
         "vehicle",
         "low_floor",

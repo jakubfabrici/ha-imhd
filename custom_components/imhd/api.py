@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from html import unescape
 from http import HTTPStatus
 import json
@@ -14,7 +14,7 @@ import math
 import re
 import time
 from typing import Any, Protocol
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import aiohttp
 import socketio
@@ -35,11 +35,12 @@ from .const import (
     REJECT_BACKOFF_MAX,
     SECTIONS,
     SIO_PATH,
+    SOURCE_TIMETABLE,
     STABLE_SESSION,
     STALE_AFTER,
     USER_AGENT,
 )
-from .models import Departure, StopInfo, board_url, normalize_text
+from .models import Departure, StopInfo, TimetablePage, board_url, normalize_text
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,26 @@ _OPTION_RE = re.compile(r'<option\s+value="(\d+)"[^>]*>([^<]*)', re.I)
 _SEARCH_VALUE_RE = re.compile(r"^g(\d+)$", re.ASCII)
 _SECTION_PATH_RE = re.compile(r"^/([a-z]+)/")
 _INFO_SPLIT_RE = re.compile(r" {10,}")
+# The scheduled departures page ("Všetky odchody zo zastávky <name> <d.m.yyyy>").
+_TIMETABLE_TITLE_RE = re.compile(
+    r'<h1 class="ModuleHeader-title[^"]*">\s*Všetky odchody zo zastávky (.+?) '
+    r"(\d{1,2})\.(\d{1,2})\.(\d{4})\s*</h1>"
+)
+_TABLE_ROW_RE = re.compile(r"<tr(?:\s[^>]*)?>", re.I)
+_TABLE_CELL_RE = re.compile(r"<td(?:\s[^>]*)?>(.*?)</td>", re.S | re.I)
+_LINE_SPAN_RE = re.compile(r'<span class="[^"]*\bLinka\b[^"]*">(.*?)</span>', re.S)
+_PLATFORM_SPAN_RE = re.compile(r'<span class="float-right[^"]*">.*?<small>(.*?)</small>', re.S)
+_CLOCK_RE = re.compile(r"(\d{1,2}):(\d{2})")
+_TAG_RE = re.compile(r"<[^>]+>")
+_SLUG_RE = re.compile(r"[^\w]+")
+# Low-floor icon; pages of cities without low-floor data have none at all.
+_WHEELCHAIR = "icons.svg#wheelchair"
+# Marks of the hour listed twice on the autumn DST day: summer, then winter time.
+_SUMMER_TIME = "(letný čas)"
+_WINTER_TIME = "(zimný čas)"
+# Bigger pages are parsed in the executor (a busy stop's day, 1,000 departures in
+# 725 kB, takes about 20 ms; a small town's 100 kB about 2 ms).
+PARSE_IN_EXECUTOR = 200_000
 # English names of sections that differ from the Slovak ones (as in the UI).
 _SECTION_ALIASES = {"slovakia & world": "transport", "slovakia and world": "transport"}
 
@@ -147,6 +168,122 @@ def _decode_stop_token(token: str) -> int | None:
     except (ValueError, UnicodeDecodeError, RecursionError):
         return None
     return ascii_int(value.get("g", "")) if isinstance(value, dict) else None
+
+
+def encode_stop_token(payload: Mapping[str, str]) -> str:
+    """Encode a page token (the inverse of `_decode_stop_token`)."""
+    raw = json.dumps(payload, separators=(",", ":")).encode()
+    return bytes((byte + 0x4F) & 0xFF for byte in raw).hex()
+
+
+def timetable_url(section: str, stop_id: int, day: date, name: str = "") -> str:
+    """Return the URL of a stop's scheduled departures page of one day.
+
+    The token encodes the stop and the day; imhd.sk requires a slug but doesn't
+    check it (its own is the stop name with dashes, "Hodžovo-nám").
+    """
+    slug = _SLUG_RE.sub("-", name).strip("-") or "zastavka"
+    token = encode_stop_token({"g": str(stop_id), "d": day.isoformat()})
+    return f"{BASE_URL}/{section}/vsetky-odchody-zo-zastavky/{quote(slug)}/{token}"
+
+
+def parse_timetable_page(html: str, day: date, time_zone: tzinfo) -> list[Departure]:
+    """Parse the scheduled departures page of `day` (every platform, sorted by time).
+
+    The page lists the calendar day 00:00-23:59 (night departures after midnight
+    are on the next day's page), in time order: on the autumn DST day it lists
+    the repeated hour twice, so its second pass is the later one (fold=1). The
+    times are read in `time_zone` (imhd.sk's) and returned in HA's, like the
+    realtime departures. Rows that can't be read are skipped. imhd.sk answers an
+    unknown stop with an error page (HTTP 200).
+    """
+    title = _TIMETABLE_TITLE_RE.search(html)
+    if title is None:
+        raise ImhdStopNotFoundError("No scheduled departures page for the stop")
+    try:
+        page_day = date(int(title.group(4)), int(title.group(3)), int(title.group(2)))
+    except ValueError as err:
+        raise ImhdConnectionError(f"Unexpected scheduled departures page: {err}") from err
+    if page_day != day:
+        raise ImhdConnectionError(f"Asked for the departures of {day}, got {page_day}")
+    body = html[title.end() :]
+    low_floor_known = _WHEELCHAIR in body
+    departures: list[Departure] = []
+    previous: datetime | None = None
+    second_pass = False
+    # The rows of the repeated hour's first pass: line, time, platform, destination.
+    first_pass: set[tuple[str, datetime, str, str]] = set()
+    # Each row up to its end (or the next row, should one not be closed).
+    for chunk in _TABLE_ROW_RE.split(body)[1:]:
+        row = chunk.split("</tr>", 1)[0]
+        try:
+            departure = _parse_timetable_row(row, day, time_zone, low_floor_known)
+        except _ROW_ERRORS as err:
+            _LOGGER.debug("Skipping malformed scheduled departure %.200r: %s", row, err)
+            continue
+        if departure is None:
+            continue
+        when = departure.departure
+        if _is_ambiguous(when):
+            key = departure.line, when, departure.platform, departure.destination
+            if _SUMMER_TIME in row or _WINTER_TIME in row:
+                second_pass = _WINTER_TIME in row
+            else:
+                # Unmarked: the clock went back (wall-clock comparison: the same time
+                # zone), or a row comes again (a stop served once an hour).
+                second_pass = second_pass or (previous is not None and when < previous)
+                second_pass = second_pass or key in first_pass
+            if second_pass:
+                when = when.replace(fold=1)
+            else:
+                first_pass.add(key)
+        previous = when
+        departure.departure = departure.scheduled = dt_util.as_local(when)
+        departures.append(departure)
+    # By the instant: same-zone comparisons ignore the fold.
+    departures.sort(key=lambda dep: dep.departure.timestamp())
+    return departures
+
+
+def _is_ambiguous(when: datetime) -> bool:
+    """Return True for a wall-clock time that comes twice (end of summer time)."""
+    offset = when.utcoffset()
+    later = when.replace(fold=1).utcoffset()
+    return offset is not None and later is not None and later < offset
+
+
+def _parse_timetable_row(
+    row: str, day: date, time_zone: tzinfo, low_floor_known: bool
+) -> Departure | None:
+    """Parse one row: vehicle, line, destination [platform], H:MM, [low floor]."""
+    cells = _TABLE_CELL_RE.findall(row)
+    if len(cells) < 5:
+        return None
+    line = _LINE_SPAN_RE.search(cells[1])
+    clock = _CLOCK_RE.fullmatch(_html_text(cells[3]))
+    if line is None or clock is None or not (line_name := _html_text(line.group(1))):
+        return None
+    hour, minute = int(clock.group(1)), int(clock.group(2))
+    on_day = day + timedelta(days=hour // 24)
+    when = datetime(on_day.year, on_day.month, on_day.day, hour % 24, minute, tzinfo=time_zone)
+    platform = _PLATFORM_SPAN_RE.search(cells[2])
+    destination = _html_text(cells[2][: platform.start()] if platform else cells[2])
+    return Departure(
+        line=line_name,
+        destination=destination,
+        departure=when,
+        scheduled=when,
+        platform=_html_text(platform.group(1)) if platform else "",
+        low_floor=(_WHEELCHAIR in cells[4]) if low_floor_known else None,
+        # "Červený most cez Kramáre": the terminal, then the stop it goes via.
+        terminal=destination.split(" cez ", 1)[0] or None,
+        source=SOURCE_TIMETABLE,
+    )
+
+
+def _html_text(fragment: str) -> str:
+    """Return the text of an HTML fragment, whitespace collapsed."""
+    return " ".join(unescape(_TAG_RE.sub(" ", fragment)).split())
 
 
 def parse_stop_page(html: str, section: str) -> StopInfo:
@@ -520,6 +657,47 @@ class ImhdApi:
             if normalize_text(stop.name) == wanted:
                 return stop
         raise ImhdStopNotFoundError(f"No stop named {name!r} in section {section}")
+
+    async def async_get_timetable(
+        self,
+        stop: StopInfo,
+        day: date,
+        time_zone: tzinfo,
+        cached: TimetablePage | None = None,
+    ) -> TimetablePage:
+        """Fetch the scheduled departures of a stop on one day.
+
+        With the validators of `cached`, imhd.sk may answer "not modified" and
+        `cached` is returned (it sent none when this was written).
+        """
+        url = timetable_url(stop.section, stop.stop_id, day, stop.name)
+        headers = {"User-Agent": USER_AGENT, "Referer": stop.board_url}
+        if cached is not None and cached.etag:
+            headers["If-None-Match"] = cached.etag
+        if cached is not None and cached.last_modified:
+            headers["If-Modified-Since"] = cached.last_modified
+        _LOGGER.debug("Fetching scheduled departures %s/%s of %s", stop.section, stop.stop_id, day)
+        try:
+            async with asyncio.timeout(HTTP_TIMEOUT):
+                async with self._session.get(url, headers=headers) as resp:
+                    if resp.status == HTTPStatus.NOT_MODIFIED and cached is not None:
+                        return cached
+                    if resp.status == HTTPStatus.NOT_FOUND:
+                        raise ImhdStopNotFoundError(f"{url} returned 404")
+                    resp.raise_for_status()
+                    html = await resp.text()
+                    etag, modified = resp.headers.get("ETag"), resp.headers.get("Last-Modified")
+        except (aiohttp.ClientError, TimeoutError, ValueError) as err:
+            raise ImhdConnectionError(f"Request to {url} failed: {err}") from err
+        if len(html) > PARSE_IN_EXECUTOR:
+            departures = await asyncio.get_running_loop().run_in_executor(
+                None, parse_timetable_page, html, day, time_zone
+            )
+        else:
+            departures = parse_timetable_page(html, day, time_zone)
+        return TimetablePage(
+            day=day, departures=tuple(departures), etag=etag, last_modified=modified
+        )
 
 
 # --------------------------------------------------------------------------

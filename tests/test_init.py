@@ -24,6 +24,7 @@ from custom_components.imhd.const import (
     CONF_MAX_DEPARTURES,
     CONF_PLATFORMS,
     CONF_STOP_NAME,
+    CONF_TIMETABLE,
     CONF_WALKING_TIME,
     DEFAULT_OPTIONS,
     DOMAIN,
@@ -158,7 +159,12 @@ YAML_STOPS: list[dict[str, Any]] = [
         "direction": "Petržalka",
         "walking_time": 3,
     },
-    {"name": "Center", "city": "ba", "stop": "https://imhd.sk/ba/online-zastavkova-tabula?st=83"},
+    {
+        "name": "Center",
+        "city": "ba",
+        "stop": "https://imhd.sk/ba/online-zastavkova-tabula?st=83",
+        "timetable": "off",
+    },
     {"city": "BA", "stop": "Hodžovo nám.", "platforms": ["A"], "max_departures": 5},
 ]
 
@@ -178,6 +184,8 @@ async def test_yaml_import(
     assert first.options[CONF_LINES] == ["9", "X13"]
     assert first.options[CONF_DIRECTION] == ["Petržalka"]
     assert first.options[CONF_WALKING_TIME] == 3
+    assert first.options[CONF_TIMETABLE] is True
+    assert entries["ba_83_center"].options[CONF_TIMETABLE] is False
     third = entries["ba_83_hodzovo_nam"]
     assert third.title == "Hodžovo nám."
     assert third.options[CONF_PLATFORMS] == ["A"]

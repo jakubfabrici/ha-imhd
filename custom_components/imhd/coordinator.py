@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial
+import heapq
+from itertools import islice
 import logging
 import math
+import random
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -35,18 +38,28 @@ from .const import (
     CONF_LINES,
     CONF_MAX_DEPARTURES,
     CONF_PLATFORMS,
+    CONF_SECTION,
+    CONF_STOP_ID,
+    CONF_TIMETABLE,
     CONF_WALKING_TIME,
     DEFAULT_DEPARTURE_SENSORS,
     DEFAULT_MAX_DEPARTURES,
+    DEFAULT_TIMETABLE,
     DOMAIN,
     EMPTY_BOARD_AFTER,
+    IMHD_TIME_ZONE,
     ISSUE_REJECTED,
     REALTIME_DEPARTED_GRACE,
     REJECT_BACKOFF,
+    SOURCE_TIMETABLE,
     TICK_INTERVAL,
+    TIMETABLE_JITTER,
+    TIMETABLE_MIN_INTERVAL,
+    TIMETABLE_START_DELAY,
     UNAVAILABLE_AFTER,
 )
 from .models import Departure, StopData, StopInfo, normalize_text
+from .timetable import DATA_TIMETABLES, Timetable, TimetableCache
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -72,6 +85,26 @@ MOVED_ON = timedelta(minutes=1)
 type ImhdConfigEntry = ConfigEntry[ImhdCoordinator]
 # A departure on the board: (platform id, trip id).
 type TripKey = tuple[str | None, int | None]
+
+
+def timetable_key(entry: ConfigEntry) -> tuple[str, int]:
+    """Return the key of the entry's stop in the shared scheduled departures."""
+    return entry.data[CONF_SECTION], int(entry.data[CONF_STOP_ID])
+
+
+@callback
+def async_release_timetables(hass: HomeAssistant) -> None:
+    """Drop the pages of stops no (enabled) entry shows scheduled departures for."""
+    wanted = {
+        timetable_key(entry)
+        for entry in hass.config_entries.async_entries(
+            DOMAIN, include_ignore=False, include_disabled=False
+        )
+        if entry.options.get(CONF_TIMETABLE, DEFAULT_TIMETABLE)
+    }
+    for key, cache in hass.data.get(DATA_TIMETABLES, {}).items():
+        if key not in wanted:
+            cache.release()
 
 
 def as_list(value: Any, *, split: bool = True) -> list[str]:
@@ -119,10 +152,18 @@ class DepartureFilter:
         )
 
     def matches(self, departure: Departure) -> bool:
-        """Return True when a departure passes the platform/line/direction filters."""
+        """Return True when a departure passes the platform/line/direction filters.
+
+        A scheduled departure whose platform id isn't known yet carries the
+        page's own label, which isn't always the board's: it doesn't pass a
+        platform filter.
+        """
         if self.platforms and not (
-            normalize_text(departure.platform) in self.platforms
-            or (departure.platform_id or "") in self.platforms
+            (departure.platform_id or "") in self.platforms
+            or (
+                normalize_text(departure.platform) in self.platforms
+                and (departure.platform_id is not None or departure.source != SOURCE_TIMETABLE)
+            )
         ):
             return False
         line = departure.line.casefold()
@@ -131,22 +172,43 @@ class DepartureFilter:
         if line in self.exclude_lines:
             return False
         if self.directions:
-            targets = normalize_text(f"{departure.destination}\n{departure.terminal or ''}")
+            targets = departure.direction_text
             if not any(direction in targets for direction in self.directions):
                 return False
         return True
 
-    def apply(self, departures: Iterable[Departure], now: datetime) -> list[Departure]:
-        """Filter departures and compute countdowns (not truncated)."""
-        result: list[Departure] = []
+    def apply(
+        self,
+        departures: Iterable[Departure],
+        now: datetime,
+        limit: int | None = None,
+        *,
+        keep: Callable[[Departure], bool] | None = None,
+        min_minutes: int = 0,
+    ) -> list[Departure]:
+        """Filter departures and compute countdowns (the first `limit` that pass).
+
+        `keep` and `min_minutes` narrow them further (imhd.get_departures). No
+        departure after the last one returned is looked at.
+        """
+        return list(islice(self._passing(departures, now, keep, min_minutes), limit))
+
+    def _passing(
+        self,
+        departures: Iterable[Departure],
+        now: datetime,
+        keep: Callable[[Departure], bool] | None,
+        min_minutes: int,
+    ) -> Iterator[Departure]:
         for candidate in departures:
-            if not self.matches(candidate):
+            if not self.matches(candidate) or (keep is not None and not keep(candidate)):
                 continue
             departure = candidate.with_countdown(now, self.walking_time)
-            if self.walking_time > 0 and departure.leave_in < 0:
+            if (self.walking_time > 0 and departure.leave_in < 0) or (
+                departure.minutes < min_minutes
+            ):
                 continue
-            result.append(departure)
-        return result
+            yield departure
 
 
 # Departure fields that feed events don't publish (the tick does).
@@ -238,6 +300,17 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self._unconfirmed = False
         self._unsub_unconfirmed: CALLBACK_TYPE | None = None
         self._content: tuple[Any, ...] | None = None
+        # Scheduled departures: the pages and their merge, shared by the entries of
+        # the stop (and kept across reloads).
+        self.timetable_cache: TimetableCache | None = None
+        if entry.options.get(CONF_TIMETABLE, DEFAULT_TIMETABLE):
+            self.timetable_cache = hass.data.setdefault(DATA_TIMETABLES, {}).setdefault(
+                timetable_key(entry), TimetableCache()
+            )
+        self._timetable_task: asyncio.Task[None] | None = None
+        self._unsub_timetable: CALLBACK_TYPE | None = None
+        # When the timer fetches the pages next (none while the refresh is paused).
+        self.timetable_due: datetime | None = None
         self.data = StopData(stop=stop)
 
     # ------------------------------------------------------------------ setup
@@ -257,12 +330,22 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
 
     @callback
     def async_start(self) -> None:
-        """Start the realtime feed and the countdown tick."""
+        """Start the realtime feed, the countdown tick and the scheduled departures."""
+        if (cache := self.timetable_cache) is not None and cache.timetable is None:
+            # Before the first page too: it remembers the departures the feed lists.
+            cache.timetable = Timetable()
         self._start_feed_task()
         if self._unsub_tick is None:
             self._unsub_tick = async_track_time_interval(
                 self.hass, self._async_tick, TICK_INTERVAL, name=f"{self.name} tick"
             )
+        if cache is not None and self._unsub_timetable is None:
+            if not cache.pages:
+                # The realtime feed first.
+                self._schedule_timetable(random.uniform(*TIMETABLE_START_DELAY))  # noqa: S311
+            else:
+                # Used before (by another entry of the stop, or before a reload).
+                self._schedule_timetable(self._timetable_delay())
 
     @callback
     def _start_feed_task(self) -> None:
@@ -279,11 +362,22 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             _LOGGER.debug("%s: no departures received within %.0f s", self.name, max_wait)
 
     async def async_shutdown(self) -> None:
-        """Stop the feed and the tick (entry unload / HA stop)."""
-        for unsub in (self._unsub_tick, self._unsub_publish, self._unsub_empty, self._unsub_info):
+        """Stop the feed, the tick and the scheduled departures (entry unload / HA stop)."""
+        for unsub in (
+            self._unsub_tick,
+            self._unsub_publish,
+            self._unsub_empty,
+            self._unsub_info,
+            self._unsub_timetable,
+        ):
             if unsub is not None:
                 unsub()
         self._unsub_tick = self._unsub_publish = self._unsub_empty = self._unsub_info = None
+        self._unsub_timetable, self.timetable_due = None, None
+        if self._timetable_task is not None:
+            self._timetable_task.cancel()
+        # The option turned off, the stop changed: no fetch left to write them back.
+        async_release_timetables(self.hass)
         self._cancel_emptied()
         self._cancel_unconfirmed()
         await self._async_stop_feed()
@@ -322,6 +416,11 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         return dt_util.utcnow() - self._disconnected_at < timedelta(seconds=UNAVAILABLE_AFTER)
 
     @property
+    def timetable(self) -> Timetable | None:
+        """Return the merge of the scheduled departures (none before the first update)."""
+        return self.timetable_cache.timetable if self.timetable_cache is not None else None
+
+    @property
     def platforms(self) -> list[str]:
         """Return the platforms covered (configured filter or all of the stop)."""
         configured = as_list(self.config_entry.options.get(CONF_PLATFORMS))
@@ -339,8 +438,22 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         """Return the vehicle details received so far."""
         return self._vehicles
 
-    def build(self, now: datetime | None = None) -> StopData:
-        """Build a fresh snapshot (filters applied, countdowns for `now`)."""
+    def build(
+        self,
+        now: datetime | None = None,
+        *,
+        keep: Callable[[Departure], bool] | None = None,
+        min_minutes: int = 0,
+        limit: int | None = None,
+        all_scheduled: bool = False,
+    ) -> StopData:
+        """Build a fresh snapshot (filters applied, countdowns for `now`).
+
+        Scheduled departures not covered by realtime ones fill in as many rows as
+        the entities show, `limit` or all of them with `all_scheduled` (a busy
+        stop has hundreds left in the day). `keep` (by line, destination and
+        platform) and `min_minutes` narrow the departures further.
+        """
         now = now or dt_util.now()
         departures = parse_tabs(
             list(self._rows.values()),
@@ -351,7 +464,26 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             vehicle_grace=not self._unconfirmed,
         )
         departures = self._track_due(departures, now)
-        matching = self.filter.apply(departures, now)
+        apply = partial(self.filter.apply, now=now, keep=keep, min_minutes=min_minutes)
+        if (timetable := self.timetable) is None:
+            matching = apply(departures)
+        else:
+            supplement = timetable.supplement(
+                departures,
+                now,
+                self.stop.platform_labels,
+                lambda dep: self.filter.matches(dep) and (keep is None or keep(dep)),
+            )
+            if limit is None and not all_scheduled:
+                limit = self._shown
+            # Both sorted by countdown and the minute shown, on a tie the realtime one first.
+            matching = list(
+                heapq.merge(
+                    apply(timetable.with_page_destinations(departures)),
+                    apply(supplement, limit=limit),
+                    key=lambda dep: (dep.minutes, dep.expected),
+                )
+            )
         return StopData(
             stop=self.stop,
             departures=matching[: self.filter.max_departures],
@@ -447,6 +579,152 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         """Recompute countdowns and drop departed rows."""
         if self.has_data:
             self._publish()
+        self._check_timetable()
+
+    # ------------------------------------------------- scheduled departures
+
+    @property
+    def timetable_paused(self) -> bool:
+        """Return True while the refresh waits for the departures to be shown again."""
+        running = self._timetable_task is not None and not self._timetable_task.done()
+        return self.timetable_due is None and not running
+
+    @callback
+    def _schedule_timetable(self, delay: float) -> None:
+        if self._unsub_timetable is not None:
+            self._unsub_timetable()
+        self.timetable_due = dt_util.utcnow() + timedelta(seconds=delay)
+        self._unsub_timetable = async_call_later(self.hass, delay, self._async_timetable_due)
+
+    @callback
+    def _schedule_timetable_soon(self) -> None:
+        """Fetch within TIMETABLE_JITTER, at random.
+
+        The ticks of an installation's stops are in step, and every installation
+        would fetch in the same minute: after midnight, or when imhd.sk is back.
+        """
+        self._schedule_timetable(random.uniform(0, TIMETABLE_JITTER.total_seconds()))  # noqa: S311
+
+    @callback
+    def _async_timetable_due(self, _now: datetime) -> None:
+        self._unsub_timetable, self.timetable_due = None, None
+        self._start_timetable_update(scheduled=True)
+
+    @callback
+    def _start_timetable_update(self, *, scheduled: bool) -> None:
+        if self._timetable_task is None or self._timetable_task.done():
+            self._timetable_task = self.config_entry.async_create_background_task(
+                self.hass,
+                self._async_update_timetable(scheduled=scheduled),
+                name=f"{self.name} scheduled departures",
+            )
+
+    @callback
+    def _check_timetable(self) -> None:
+        """Resume a paused refresh; fetch a missing page early (soon, not at the tick).
+
+        Today's page after midnight, tomorrow's when the list runs short.
+        """
+        if (
+            (cache := self.timetable_cache) is None
+            or cache.timetable is None
+            # Nothing fetched yet.
+            or (time_zone := cache.time_zone) is None
+            or (self._timetable_task is not None and not self._timetable_task.done())
+        ):
+            return
+        if (due := self.timetable_due) is None:
+            # Paused while the departures couldn't be shown.
+            if self.available:
+                self._schedule_timetable_soon()
+        elif due - dt_util.utcnow() > TIMETABLE_JITTER and self._timetable_days(
+            dt_util.now(time_zone), scheduled=False
+        ):
+            self._schedule_timetable_soon()
+
+    async def _async_update_timetable(self, *, scheduled: bool) -> None:
+        """Fetch the pages that are due and merge them in (best effort)."""
+        if (cache := self.timetable_cache) is None:
+            return
+        async with cache.lock:
+            if (time_zone := cache.time_zone) is None:
+                time_zone = await dt_util.async_get_time_zone(IMHD_TIME_ZONE)
+                time_zone = cache.time_zone = time_zone or dt_util.get_default_time_zone()
+            if (timetable := cache.timetable) is None:
+                timetable = cache.timetable = Timetable()
+            now = dt_util.now(time_zone)
+            cache.forget_before(now.date())
+            if days := self._timetable_days(now, scheduled=scheduled):
+                await cache.async_fetch(self.api, self.stop, days, time_zone)
+            timetable.update(cache.pages.values())
+        if self.available:
+            self._schedule_timetable(self._timetable_delay())
+        # Otherwise paused: the tick resumes it once the departures can be shown.
+        if self.has_data:
+            # Publishes (and moves last_update) only when the content changed.
+            self._publish(from_feed=True)
+
+    def _timetable_days(self, now: datetime, *, scheduled: bool) -> list[date]:
+        """Return the days whose pages to fetch now (none: nothing is due).
+
+        The timer refreshes today's page (and fetches missing ones) when its own
+        refresh is due, counted from its last fetch: tomorrow's page fetched in
+        between doesn't put it off. A retry after an error refetches today's
+        only when its own refresh is due (tomorrow's failing). Missing pages,
+        today's after midnight and tomorrow's when the list runs short, are
+        fetched earlier, but not more often than every TIMETABLE_MIN_INTERVAL
+        and not while backing off after errors. Nothing is fetched while the
+        departures can't be shown (imhd.sk refused the realtime connection, or
+        it is down).
+        """
+        cache = self.timetable_cache
+        if cache is None or not self.available:
+            return []
+        today = now.date()
+        if cache.attempt is None:
+            return [today] if scheduled else []
+        wanted = [today]
+        # Short with today's departures (without them it is short anyway).
+        if today in cache.pages and len(self.data.matching) < self.filter.max_departures:
+            wanted.append(today + timedelta(days=1))
+        missing = [day for day in wanted if day not in cache.pages]
+        since = now - cache.attempt
+        if cache.failures:
+            # Backing off: only the retry, once it is due.
+            if not scheduled or since < cache.refresh_after():
+                return []
+            if missing and not cache.refresh_due(today, now):
+                return missing
+            # Also when nothing is missing: today's page failed.
+            return list(dict.fromkeys([today, *missing]))
+        if since < TIMETABLE_MIN_INTERVAL:
+            return []
+        if scheduled and cache.refresh_due(today, now):
+            return list(dict.fromkeys([today, *missing]))
+        return missing
+
+    def _timetable_delay(self) -> float:
+        """Return the seconds until the next refresh is due (with jitter when all is well).
+
+        When all is well, today's page is refreshed TIMETABLE_REFRESH (moved by
+        up to TIMETABLE_JITTER either way) after its own last fetch, not after
+        the last attempt: tomorrow's page, fetched since as the list ran short,
+        doesn't put it off. After errors the retry backs off from the last
+        attempt.
+        """
+        cache = self.timetable_cache
+        if cache is None or cache.attempt is None:
+            return TIMETABLE_MIN_INTERVAL.total_seconds()
+        due = cache.attempt + cache.refresh_after()
+        if not cache.failures:
+            jitter = random.uniform(0, 2 * TIMETABLE_JITTER.total_seconds())  # noqa: S311
+            today = dt_util.now(cache.time_zone).date()
+            last = cache.refreshed.get(today, cache.attempt)
+            due = max(
+                last + cache.refresh_after() + timedelta(seconds=jitter),
+                cache.attempt + TIMETABLE_MIN_INTERVAL,
+            )
+        return max(0.0, (due - dt_util.utcnow()).total_seconds())
 
     # --------------------------------------------------- feed listener API
 

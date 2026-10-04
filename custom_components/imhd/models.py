@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import math
 from typing import Any
 import unicodedata
 
-from .const import BASE_URL, SECTIONS
+from .const import BASE_URL, SECTIONS, SOURCE_REALTIME
 
 # imhd.sk shows "N min" up to this many minutes, then the clock time.
 COUNTDOWN_TEXT_MAX = 60
@@ -104,6 +104,11 @@ class Departure:
     previous_stop: str | None = None
     stops_away: int | None = None
     vehicle_type: str | None = None
+    # SOURCE_REALTIME (the realtime feed) or SOURCE_TIMETABLE (scheduled departures page).
+    source: str = SOURCE_REALTIME
+    # The scheduled departures page's destination, where the feed's text took its
+    # place or was matched to it ("Petržalka, Kapitulský dvor" for "Kapitulský dvor").
+    timetable_destination: str | None = None
     minutes: int = 0
     leave_in: int = 0
 
@@ -116,6 +121,12 @@ class Departure:
             leave_in=minutes - walking_time,
             text=countdown_text(self.departure, now, realtime=self.realtime),
         )
+
+    @property
+    def direction_text(self) -> str:
+        """Return what a direction filter looks in: headsign, terminal and page destination."""
+        texts = (self.destination, self.terminal, self.timetable_destination)
+        return normalize_text("\n".join(text for text in texts if text))
 
     @property
     def expected(self) -> datetime:
@@ -145,6 +156,7 @@ class Departure:
             "leave_in": self.leave_in,
             "delay": self.delay,
             "realtime": self.realtime,
+            "source": self.source,
             "platform": self.platform,
             "vehicle": self.vehicle,
             "low_floor": self.low_floor,
@@ -167,6 +179,17 @@ class Departure:
         predictions by seconds every few seconds, which must not write new states.
         """
         return {**self.as_dict(), "departure": self.expected.isoformat()}
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TimetablePage:
+    """The scheduled departures of a stop on one day, sorted by time."""
+
+    day: date
+    departures: tuple[Departure, ...] = ()
+    # HTTP cache validators of the response, sent back with the next request.
+    etag: str | None = None
+    last_modified: str | None = None
 
 
 @dataclass(slots=True, kw_only=True)

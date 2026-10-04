@@ -7,8 +7,9 @@ examples and translations are all welcome.
 
 * **Be gentle with imhd.sk.** The integration is unofficial. Changes must not
   add polling or extra connections: one socket.io connection per configured
-  stop, HTTP only for stop look-ups. Tests must never hit the real server -
-  use the captured payloads in `tests/fixtures/`.
+  stop, HTTP only for stop look-ups and the stop's timetable page (at most
+  every 5 minutes per stop, normally about every 2 hours). Tests must never hit
+  the real server - use the captured payloads in `tests/fixtures/`.
 * **No private data** in code, fixtures, screenshots or examples: no tokens,
   hostnames, IP addresses, home coordinates or your personal stop. Use the
   public example stops: Bratislava *Hodžovo nám.* 83 (platforms A–D),

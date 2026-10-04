@@ -11,10 +11,12 @@
 #
 # The `departures` attribute is a list of dicts with these keys:
 #   line, destination, destination_city, departure, scheduled, time,
-#   scheduled_time, minutes, leave_in, delay, realtime, platform, vehicle,
-#   low_floor, air_conditioning, stuck, text, trip_id, platform_id, terminal,
-#   previous_stop, stops_away, vehicle_type
-# (see the README for types and null cases). `minutes`, `leave_in` and `text`
+#   scheduled_time, minutes, leave_in, delay, realtime, source, platform,
+#   vehicle, low_floor, air_conditioning, stuck, text, trip_id, platform_id,
+#   terminal, previous_stop, stops_away, vehicle_type
+# (see the README for types and null cases). `source` is "realtime" for the
+# departures imhd.sk's realtime feed lists and "timetable" for the later ones
+# from the stop's timetable page. `minutes`, `leave_in` and `text`
 # are recomputed by the integration every 30 seconds, so templates that read
 # them stay current without any time-based trigger.
 

@@ -86,6 +86,7 @@ async def test_entities_and_attributes(
         "leave_in": 4,
         "delay": 2,
         "realtime": True,
+        "source": "realtime",
         "platform": "A",
         "vehicle": "4401",
         "low_floor": None,

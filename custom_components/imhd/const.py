@@ -58,6 +58,7 @@ CONF_MAX_DEPARTURES: Final = "max_departures"
 CONF_WALKING_TIME: Final = "walking_time"
 CONF_LEAVE_WINDOW: Final = "time_to_leave_window"
 CONF_DEPARTURE_SENSORS: Final = "departure_sensors"
+CONF_TIMETABLE: Final = "timetable"
 
 # Config flow helper keys
 CONF_METHOD: Final = "method"
@@ -79,6 +80,7 @@ MAX_DEPARTURES_LIMIT: Final = 30
 MAX_DEPARTURE_SENSORS: Final = 10
 MAX_WALKING_TIME: Final = 120
 MAX_LEAVE_WINDOW: Final = 60
+DEFAULT_TIMETABLE: Final = True
 
 DEFAULT_OPTIONS: Final[dict[str, object]] = {
     CONF_PLATFORMS: [],
@@ -89,6 +91,7 @@ DEFAULT_OPTIONS: Final[dict[str, object]] = {
     CONF_WALKING_TIME: DEFAULT_WALKING_TIME,
     CONF_LEAVE_WINDOW: DEFAULT_LEAVE_WINDOW,
     CONF_DEPARTURE_SENSORS: DEFAULT_DEPARTURE_SENSORS,
+    CONF_TIMETABLE: DEFAULT_TIMETABLE,
 }
 
 # Realtime feed timing
@@ -119,6 +122,33 @@ DEPARTED_GRACE: Final = timedelta(seconds=30)
 # Checked on feed messages and the countdown tick: up to TICK_INTERVAL later.
 REALTIME_DEPARTED_GRACE: Final = timedelta(seconds=90)
 HTTP_TIMEOUT: Final = 15.0
+
+# Scheduled departures (imhd.sk "Všetky odchody zo zastávky" page, one per day).
+# The realtime feed lists about two departures per line and direction, up to
+# about 3 hours ahead; the page fills in the rest. imhd.sk renders it on every
+# request (up to 4 s for a busy stop) and sends no cache validators, so it is
+# fetched rarely, at most once per TIMETABLE_MIN_INTERVAL per stop.
+# Times on imhd.sk pages are Slovak local time.
+IMHD_TIME_ZONE: Final = "Europe/Bratislava"
+# First fetch after setup: a random delay in seconds (the realtime feed comes
+# first, and stops set up together don't fetch at once).
+TIMETABLE_START_DELAY: Final = (5.0, 60.0)
+# Refresh interval, randomly moved by up to TIMETABLE_JITTER either way.
+TIMETABLE_REFRESH: Final = timedelta(hours=2)
+TIMETABLE_JITTER: Final = timedelta(minutes=15)
+# Never fetch a stop's pages more often (also the first retry after an error,
+# doubled after each failed attempt up to TIMETABLE_BACKOFF_MAX).
+TIMETABLE_MIN_INTERVAL: Final = timedelta(minutes=5)
+TIMETABLE_BACKOFF_MAX: Final = timedelta(minutes=60)
+# imhd.sk has no page for the stop (it answered "not found" before any page of
+# the stop was fetched, or this many times in a row): try again after this long.
+TIMETABLE_NOT_FOUND_ATTEMPTS: Final = 3
+TIMETABLE_NOT_FOUND_RETRY: Final = timedelta(hours=24)
+
+# Departure `source`: the realtime feed (vehicle-tracked or the feed's own
+# timetable rows) or the scheduled departures page.
+SOURCE_REALTIME: Final = "realtime"
+SOURCE_TIMETABLE: Final = "timetable"
 
 # Services
 SERVICE_REFRESH: Final = "refresh"

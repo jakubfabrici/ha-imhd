@@ -68,7 +68,8 @@
           "max_departures": "Maximum departures",
           "walking_time": "Walking time to the stop",
           "time_to_leave_window": "Time to leave window",
-          "departure_sensors": "Per-departure sensors"
+          "departure_sensors": "Per-departure sensors",
+          "timetable": "Scheduled departures"
         },
         "data_description": {
           "name": "Used for the device and the entity ids, e.g. `sensor.hodzovo_departures` for the name Hodzovo.",
@@ -79,7 +80,8 @@
           "max_departures": "How many departures the main sensor lists (1-30).",
           "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
           "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
-          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10)."
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10).",
+          "timetable": "Also list departures from the imhd.sk timetable beyond what the realtime feed covers (it sends only about the next two departures per line and direction). The timetable page is fetched about every 2 hours."
         }
       }
     },
@@ -112,7 +114,8 @@
           "max_departures": "Maximum departures",
           "walking_time": "Walking time to the stop",
           "time_to_leave_window": "Time to leave window",
-          "departure_sensors": "Per-departure sensors"
+          "departure_sensors": "Per-departure sensors",
+          "timetable": "Scheduled departures"
         },
         "data_description": {
           "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
@@ -122,7 +125,8 @@
           "max_departures": "How many departures the main sensor lists (1-30).",
           "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
           "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
-          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10)."
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10).",
+          "timetable": "Also list departures from the imhd.sk timetable beyond what the realtime feed covers (it sends only about the next two departures per line and direction). The timetable page is fetched about every 2 hours."
         }
       },
       "yaml": {
@@ -136,7 +140,8 @@
           "max_departures": "Maximum departures",
           "walking_time": "Walking time to the stop",
           "time_to_leave_window": "Time to leave window",
-          "departure_sensors": "Per-departure sensors"
+          "departure_sensors": "Per-departure sensors",
+          "timetable": "Scheduled departures"
         },
         "data_description": {
           "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
@@ -146,7 +151,8 @@
           "max_departures": "How many departures the main sensor lists (1-30).",
           "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
           "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
-          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10)."
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10).",
+          "timetable": "Also list departures from the imhd.sk timetable beyond what the realtime feed covers (it sends only about the next two departures per line and direction). The timetable page is fetched about every 2 hours."
         }
       }
     }

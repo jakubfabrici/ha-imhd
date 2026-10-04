@@ -20,6 +20,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     LocationSelector,
     LocationSelectorConfig,
     NumberSelector,
@@ -60,10 +61,12 @@ from .const import (
     CONF_STOP_CITY,
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    CONF_TIMETABLE,
     CONF_WALKING_TIME,
     DATA_YAML_IMPORTED,
     DEFAULT_OPTIONS,
     DEFAULT_SECTION,
+    DEFAULT_TIMETABLE,
     DOMAIN,
     MAX_DEPARTURE_SENSORS,
     MAX_DEPARTURES_LIMIT,
@@ -116,6 +119,7 @@ def clean_options(user_input: dict[str, Any]) -> dict[str, Any]:
     }
     for key in _NUMBER_FIELDS:
         options[key] = int(user_input.get(key, DEFAULT_OPTIONS[key]))
+    options[CONF_TIMETABLE] = bool(user_input.get(CONF_TIMETABLE, DEFAULT_TIMETABLE))
     return options
 
 
@@ -139,6 +143,7 @@ def settings_schema(platforms: list[str], *, with_name: bool) -> vol.Schema:
         if key in _MINUTE_FIELDS:
             config["unit_of_measurement"] = UnitOfTime.MINUTES
         fields[vol.Required(key, default=DEFAULT_OPTIONS[key])] = NumberSelector(config)
+    fields[vol.Required(CONF_TIMETABLE, default=DEFAULT_TIMETABLE)] = BooleanSelector()
     return vol.Schema(fields)
 
 

@@ -31,6 +31,7 @@ from custom_components.imhd.const import (
     CONF_SECTION,
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    CONF_TIMETABLE,
     CONF_WALKING_TIME,
     DOMAIN,
     SECTIONS,
@@ -108,6 +109,7 @@ async def test_nearest_flow(hass: HomeAssistant, mock_http: AiohttpClientMocker)
         CONF_WALKING_TIME: 4,
         CONF_LEAVE_WINDOW: 2,
         CONF_DEPARTURE_SENSORS: 2,
+        CONF_TIMETABLE: True,
     }
     assert result["result"].unique_id == "ba_83_hodzovo"
 
@@ -191,16 +193,26 @@ async def test_already_configured(
 
 async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """The options flow edits the filters."""
+    # Entries made before the timetable option existed have it on.
+    hass.config_entries.async_update_entry(
+        config_entry,
+        options={k: v for k, v in config_entry.options.items() if k != CONF_TIMETABLE},
+    )
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     assert result["type"] is FlowResultType.FORM
-    assert result["data_schema"].schema[CONF_PLATFORMS].config["options"] == ["A", "B", "C", "D"]
+    schema = result["data_schema"].schema
+    assert schema[CONF_PLATFORMS].config["options"] == ["A", "B", "C", "D"]
+    timetable = next(key for key in schema if key == CONF_TIMETABLE)
+    assert timetable.description == {"suggested_value": True}
     settings = {k: v for k, v in SETTINGS.items() if k != CONF_NAME}
     settings[CONF_EXCLUDE_LINES] = ["N33"]
+    settings[CONF_TIMETABLE] = False
     result = await hass.config_entries.options.async_configure(result["flow_id"], settings)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert config_entry.options[CONF_EXCLUDE_LINES] == ["N33"]
     assert config_entry.options[CONF_LINES] == ["9", "X13"]
     assert config_entry.options[CONF_MAX_DEPARTURES] == 5
+    assert config_entry.options[CONF_TIMETABLE] is False
 
 
 async def test_reconfigure_changes_stop(

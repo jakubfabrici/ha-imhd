@@ -6,6 +6,31 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Scheduled departures beyond the realtime horizon. imhd.sk's realtime feed
+  lists only about the next two departures of each line and direction, up to
+  about three hours ahead, so a small-town stop showed just one or two. The
+  list is now filled from the stop's timetable page on imhd.sk ("Všetky
+  odchody zo zastávky"). A timetable departure is left out when the feed lists
+  the same trip (same line and scheduled time, also when delayed), and it
+  passes the same filters, walking time and sorting. Each departure has a new
+  `source` key: `realtime` or `timetable`. Platform labels and destination
+  texts of the timetable page are matched to the board's from the departures
+  the feed lists; a `direction` filter matches both texts. New option
+  `timetable` (YAML, setup and options form; default on).
+- The timetable page is fetched rarely, as a date's timetable rarely changes:
+  within a minute after start-up, then about every 2 hours (1¾ to 2¼ hours
+  after the page's own last fetch, at random), tomorrow's page once, early,
+  when the list runs short (within 15 minutes, at random; it doesn't put off
+  today's refresh), and at most once every 5 minutes per stop (shared by the
+  entries of a stop and across reloads), and not while the entities are
+  unavailable. Errors keep the old departures and back off from 5 to 60
+  minutes; a stop without a timetable is retried after 24 hours. The realtime
+  departures never wait for it. Diagnostics show the last fetch, the
+  departures per day, the last error and the next attempt (or that the
+  refresh is paused).
+
 ## [1.0.0] - 2026-10-03
 
 First public release. Requires Home Assistant **2025.2.0** or newer.

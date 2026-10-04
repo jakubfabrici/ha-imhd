@@ -35,7 +35,7 @@ from .const import (
     SERVICE_REFRESH,
 )
 from .coordinator import ImhdConfigEntry, ImhdCoordinator, as_list
-from .models import normalize_text
+from .models import Departure, normalize_text
 
 REFRESH_SCHEMA = vol.Schema(
     {
@@ -152,23 +152,20 @@ def _coordinator_for(hass: HomeAssistant, call: ServiceCall) -> ImhdCoordinator:
 
 def _departures_response(coordinator: ImhdCoordinator, call: ServiceCall) -> dict[str, Any]:
     """Build the get_departures response from fresh (filtered) departures."""
-    data = coordinator.build()
     lines = {line.casefold() for line in as_list(call.data.get(ATTR_LINE))}
     direction = normalize_text(call.data.get(ATTR_DIRECTION) or "")
-    min_minutes: int = call.data[ATTR_MIN_MINUTES]
     limit: int = call.data.get(ATTR_LIMIT) or coordinator.filter.max_departures
-    departures = [
-        dep
-        for dep in data.matching
-        if (not lines or dep.line.casefold() in lines)
-        and (
-            not direction or direction in normalize_text(f"{dep.destination}\n{dep.terminal or ''}")
+
+    def keep(departure: Departure) -> bool:
+        return (not lines or departure.line.casefold() in lines) and (
+            not direction or direction in departure.direction_text
         )
-        and dep.minutes >= min_minutes
-    ]
+
+    # Only as many scheduled departures as the response holds are looked at.
+    data = coordinator.build(keep=keep, min_minutes=call.data[ATTR_MIN_MINUTES], limit=limit)
     return {
         "stop": data.stop.as_dict(),
-        "departures": [dep.as_dict() for dep in departures[:limit]],
+        "departures": [dep.as_dict() for dep in data.matching[:limit]],
     }
 
 
