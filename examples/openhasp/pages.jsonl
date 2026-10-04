@@ -1,0 +1,32 @@
+{"page":1,"comment":"IMHD.sk departure board - 320x480 portrait - filled by imhd_openhasp.yaml"}
+{"page":1,"id":0,"bg_color":"#1A1A2E","bg_grad_dir":0}
+{"page":1,"id":1,"obj":"obj","x":0,"y":0,"w":320,"h":56,"bg_color":"#16213E","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":2,"obj":"label","x":12,"y":5,"w":296,"h":30,"text":"Departures","text_font":24,"text_color":"#FFFFFF","long_mode":"dot"}
+{"page":1,"id":3,"obj":"label","x":12,"y":34,"w":296,"h":20,"text":"","text_font":16,"text_color":"#4488CC","long_mode":"dot"}
+{"page":1,"id":4,"obj":"obj","x":0,"y":56,"w":320,"h":28,"bg_color":"#0F3460","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":5,"obj":"label","x":8,"y":61,"w":56,"h":20,"text":"LINE","text_font":16,"text_color":"#4488CC","align":"center"}
+{"page":1,"id":6,"obj":"label","x":72,"y":61,"w":160,"h":20,"text":"DIRECTION","text_font":16,"text_color":"#4488CC"}
+{"page":1,"id":7,"obj":"label","x":236,"y":61,"w":76,"h":20,"text":"DEPARTS","text_font":16,"text_color":"#4488CC","align":"right"}
+{"page":1,"id":10,"obj":"label","x":8,"y":102,"w":56,"h":42,"text":"","text_font":24,"text_color":"#FFFFFF","align":"center","bg_color":"#E94560","bg_opa":255,"radius":8,"pad_top":6,"long_mode":"clip","hidden":true}
+{"page":1,"id":11,"obj":"label","x":72,"y":113,"w":164,"h":22,"text":"","text_font":16,"text_color":"#FFFFFF","long_mode":"dot"}
+{"page":1,"id":12,"obj":"label","x":236,"y":108,"w":76,"h":30,"text":"","text_font":24,"text_color":"#FFFFFF","align":"right"}
+{"page":1,"id":13,"obj":"obj","x":8,"y":159,"w":304,"h":1,"bg_color":"#0F3460","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":14,"obj":"label","x":8,"y":174,"w":56,"h":42,"text":"","text_font":24,"text_color":"#FFFFFF","align":"center","bg_color":"#E94560","bg_opa":255,"radius":8,"pad_top":6,"long_mode":"clip","hidden":true}
+{"page":1,"id":15,"obj":"label","x":72,"y":185,"w":164,"h":22,"text":"","text_font":16,"text_color":"#FFFFFF","long_mode":"dot"}
+{"page":1,"id":16,"obj":"label","x":236,"y":180,"w":76,"h":30,"text":"","text_font":24,"text_color":"#FFFFFF","align":"right"}
+{"page":1,"id":17,"obj":"obj","x":8,"y":231,"w":304,"h":1,"bg_color":"#0F3460","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":18,"obj":"label","x":8,"y":246,"w":56,"h":42,"text":"","text_font":24,"text_color":"#FFFFFF","align":"center","bg_color":"#E94560","bg_opa":255,"radius":8,"pad_top":6,"long_mode":"clip","hidden":true}
+{"page":1,"id":19,"obj":"label","x":72,"y":257,"w":164,"h":22,"text":"","text_font":16,"text_color":"#FFFFFF","long_mode":"dot"}
+{"page":1,"id":20,"obj":"label","x":236,"y":252,"w":76,"h":30,"text":"","text_font":24,"text_color":"#FFFFFF","align":"right"}
+{"page":1,"id":21,"obj":"obj","x":8,"y":303,"w":304,"h":1,"bg_color":"#0F3460","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":22,"obj":"label","x":8,"y":318,"w":56,"h":42,"text":"","text_font":24,"text_color":"#FFFFFF","align":"center","bg_color":"#E94560","bg_opa":255,"radius":8,"pad_top":6,"long_mode":"clip","hidden":true}
+{"page":1,"id":23,"obj":"label","x":72,"y":329,"w":164,"h":22,"text":"","text_font":16,"text_color":"#FFFFFF","long_mode":"dot"}
+{"page":1,"id":24,"obj":"label","x":236,"y":324,"w":76,"h":30,"text":"","text_font":24,"text_color":"#FFFFFF","align":"right"}
+{"page":1,"id":25,"obj":"obj","x":8,"y":375,"w":304,"h":1,"bg_color":"#0F3460","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":26,"obj":"label","x":8,"y":390,"w":56,"h":42,"text":"","text_font":24,"text_color":"#FFFFFF","align":"center","bg_color":"#E94560","bg_opa":255,"radius":8,"pad_top":6,"long_mode":"clip","hidden":true}
+{"page":1,"id":27,"obj":"label","x":72,"y":401,"w":164,"h":22,"text":"","text_font":16,"text_color":"#FFFFFF","long_mode":"dot"}
+{"page":1,"id":28,"obj":"label","x":236,"y":396,"w":76,"h":30,"text":"","text_font":24,"text_color":"#FFFFFF","align":"right"}
+{"page":1,"id":29,"obj":"obj","x":8,"y":447,"w":304,"h":1,"bg_color":"#0F3460","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":9,"obj":"obj","x":0,"y":448,"w":320,"h":32,"bg_color":"#16213E","bg_grad_dir":0,"radius":0,"border_width":0,"click":false}
+{"page":1,"id":30,"obj":"label","x":8,"y":454,"w":200,"h":20,"text":"Updated --:--","text_font":16,"text_color":"#4488CC"}
+{"page":1,"id":31,"obj":"label","x":208,"y":454,"w":104,"h":20,"text":"","text_font":16,"text_color":"#4488CC","align":"right"}

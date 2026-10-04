@@ -1,0 +1,21 @@
+# Markdown card: departure board as a table.
+# Dashboard -> Edit -> Add card -> Manual, then paste this YAML.
+# Uses only core cards. Replace "hodzovo" with the name of your stop.
+type: markdown
+content: |
+  {%- set s = 'sensor.hodzovo_departures' -%}
+  {%- set deps = state_attr(s, 'departures') or [] -%}
+  ## <ha-icon icon="mdi:bus-stop"></ha-icon> {{ state_attr(s, 'stop_name') or 'Departures' }}
+  {% if deps %}
+  | | Line | Destination | Time | In |
+  |:-:|:-:|:--|:-:|--:|
+  {%- for d in deps[:8] %}
+  | {{ '<ha-icon icon="mdi:access-point"></ha-icon>' if d.realtime else '<ha-icon icon="mdi:calendar-clock"></ha-icon>' }} | **{{ d.line }}** | {{ d.destination }} | {{ d.time }}{{ ' <font color="#e74c3c">+' ~ d.delay ~ '</font>' if d.delay and d.delay > 0 }} | {{ 'now' if d.minutes == 0 else d.minutes ~ ' min' if d.minutes < 60 else '' }} |
+  {%- endfor %}
+  {% else %}
+  *No departures at the moment.*
+  {% endif %}
+  {% for m in state_attr(s, 'info') or [] %}
+  > <ha-icon icon="mdi:alert"></ha-icon> {{ m }}
+  {% endfor %}
+  <sub><ha-icon icon="mdi:access-point"></ha-icon> live · <ha-icon icon="mdi:calendar-clock"></ha-icon> timetable · updated {{ as_timestamp(state_attr(s, 'last_update'), 0) | timestamp_custom('%H:%M') if state_attr(s, 'last_update') else '–' }} · data: imhd.sk</sub>

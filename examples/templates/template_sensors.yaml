@@ -1,0 +1,197 @@
+# template_sensors.yaml - useful template entities built on IMHD.sk Departures
+#
+# This file is a list of template blocks, so it can be included directly:
+#
+#   # configuration.yaml
+#   template: !include imhd_templates.yaml
+#
+# If you already have a `template:` section, paste the list items below into it.
+# All examples use the stop named "Hodzovo" (sensor.hodzovo_departures);
+# search & replace "hodzovo" with the name of your stop.
+#
+# The `departures` attribute is a list of dicts with these keys:
+#   line, destination, destination_city, departure, scheduled, time,
+#   scheduled_time, minutes, leave_in, delay, realtime, source, platform,
+#   vehicle, low_floor, air_conditioning, stuck, text, trip_id, platform_id,
+#   terminal, previous_stop, stops_away, vehicle_type
+# (see the README for types and null cases). `source` is "realtime" for the
+# departures imhd.sk's realtime feed lists and "timetable" for the later ones
+# from the stop's timetable page. `minutes`, `leave_in` and `text`
+# are recomputed by the integration every 30 seconds, so templates that read
+# them stay current without any time-based trigger.
+
+- sensor:
+    # "Line 44 to Koliba at 08:02 (in 4 min)" - a one-line summary.
+    - name: "Hodzovo next departure text"
+      unique_id: hodzovo_next_departure_text
+      icon: mdi:bus-clock
+      state: >
+        {%- set s = 'sensor.hodzovo_departures' -%}
+        {%- set line = state_attr(s, 'next_line') -%}
+        {%- if line -%}
+          {%- set m = state_attr(s, 'next_minutes') | int(0) -%}
+          Line {{ line }} to {{ state_attr(s, 'next_destination') }} at {{ state_attr(s, 'next_time') }}
+          {{- ' (now)' if m == 0 else ' (in ' ~ m ~ ' min)' }}
+        {%- else -%}
+          No departures
+        {%- endif -%}
+
+    # Minutes until the next departure of one particular line.
+    - name: "Hodzovo next 44"
+      unique_id: hodzovo_next_44
+      icon: mdi:bus
+      unit_of_measurement: min
+      state: >
+        {% set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+        {% set d = deps | selectattr('line', 'eq', '44') | first %}
+        {{ d.minutes if d is defined else none }}
+      availability: >
+        {{ (state_attr('sensor.hodzovo_departures', 'departures') or [])
+           | selectattr('line', 'eq', '44') | list | count > 0 }}
+      attributes:
+        departure: >
+          {% set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {% set d = deps | selectattr('line', 'eq', '44') | first %}
+          {{ d.time if d is defined else none }}
+        realtime: >
+          {% set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {% set d = deps | selectattr('line', 'eq', '44') | first %}
+          {{ d.realtime if d is defined else none }}
+
+    # "08:02, 08:11, 08:23" - departures whose destination contains "Koliba".
+    - name: "Hodzovo to Koliba"
+      unique_id: hodzovo_to_koliba
+      icon: mdi:sign-direction
+      state: >
+        {% set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+        {% set times = deps | selectattr('destination', 'search', 'Koliba')
+                            | map(attribute='time') | list %}
+        {{ times[:3] | join(', ') if times else 'none' }}
+
+    # Number of departures in the next 15 minutes.
+    - name: "Hodzovo departures within 15 min"
+      unique_id: hodzovo_departures_within_15
+      icon: mdi:counter
+      unit_of_measurement: departures
+      state: >
+        {{ (state_attr('sensor.hodzovo_departures', 'departures') or [])
+           | selectattr('minutes', 'le', 15) | list | count }}
+
+    # Time of the first departure served by a low-floor vehicle.
+    - name: "Hodzovo next low-floor"
+      unique_id: hodzovo_next_low_floor
+      icon: mdi:wheelchair-accessibility
+      state: >
+        {% set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+        {% set d = deps | selectattr('low_floor', 'eq', true) | first %}
+        {{ d.line ~ ' at ' ~ d.time if d is defined else 'none known' }}
+
+    # Compact board for small displays: "44 4' · 42 5' · 47 10' · 44 13'"
+    - name: "Hodzovo compact board"
+      unique_id: hodzovo_compact_board
+      icon: mdi:bus-stop
+      state: >
+        {% set deps = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+        {% set ns = namespace(items=[]) %}
+        {% for d in deps[:4] %}
+          {% set ns.items = ns.items + [d.line ~ ' ' ~ (d.minutes ~ "'" if d.minutes < 60 else d.time)] %}
+        {% endfor %}
+        {{ ns.items | join(' · ') if ns.items else '-' }}
+
+    # Legacy attributes dep1_line ... dep5_time for dashboards/automations
+    # written for an older scraper/MQTT setup. Rename the keys if yours differ.
+    - name: "Hodzovo legacy departures"
+      unique_id: hodzovo_legacy_departures
+      icon: mdi:history
+      state: "{{ states('sensor.hodzovo_departures') }}"
+      attributes:
+        dep1_line: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[0].line if d | count > 0 else '' }}
+        dep1_dest: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[0].destination if d | count > 0 else '' }}
+        dep1_min: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[0].minutes if d | count > 0 else '' }}
+        dep1_time: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[0].time if d | count > 0 else '' }}
+        dep2_line: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[1].line if d | count > 1 else '' }}
+        dep2_dest: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[1].destination if d | count > 1 else '' }}
+        dep2_min: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[1].minutes if d | count > 1 else '' }}
+        dep2_time: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[1].time if d | count > 1 else '' }}
+        dep3_line: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[2].line if d | count > 2 else '' }}
+        dep3_dest: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[2].destination if d | count > 2 else '' }}
+        dep3_min: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[2].minutes if d | count > 2 else '' }}
+        dep3_time: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[2].time if d | count > 2 else '' }}
+        dep4_line: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[3].line if d | count > 3 else '' }}
+        dep4_dest: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[3].destination if d | count > 3 else '' }}
+        dep4_min: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[3].minutes if d | count > 3 else '' }}
+        dep4_time: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[3].time if d | count > 3 else '' }}
+        dep5_line: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[4].line if d | count > 4 else '' }}
+        dep5_dest: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[4].destination if d | count > 4 else '' }}
+        dep5_min: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[4].minutes if d | count > 4 else '' }}
+        dep5_time: >-
+          {% set d = state_attr('sensor.hodzovo_departures', 'departures') or [] %}
+          {{ d[4].time if d | count > 4 else '' }}
+
+- binary_sensor:
+    # On when the next departure is 3 or more minutes late.
+    - name: "Hodzovo next departure delayed"
+      unique_id: hodzovo_next_departure_delayed
+      icon: mdi:clock-alert-outline
+      state: >
+        {{ (state_attr('sensor.hodzovo_departures', 'next_delay') or 0) >= 3 }}
+      attributes:
+        delay: "{{ state_attr('sensor.hodzovo_departures', 'next_delay') }}"
+        line: "{{ state_attr('sensor.hodzovo_departures', 'next_line') }}"
+
+    # Like binary_sensor.hodzovo_time_to_leave, but only for line 44.
+    - name: "Hodzovo leave for 44"
+      unique_id: hodzovo_leave_for_44
+      icon: mdi:walk
+      state: >
+        {{ (state_attr('sensor.hodzovo_departures', 'departures') or [])
+           | selectattr('line', 'eq', '44')
+           | selectattr('leave_in', 'ge', 0)
+           | selectattr('leave_in', 'le', 2)
+           | list | count > 0 }}
+
+    # On when the board is fed by live vehicle positions (not just the timetable).
+    - name: "Hodzovo live data"
+      unique_id: hodzovo_live_data
+      device_class: connectivity
+      state: >
+        {{ is_state('binary_sensor.hodzovo_realtime_connected', 'on')
+           and state_attr('sensor.hodzovo_departures', 'next_realtime') == true }}

@@ -1,0 +1,58 @@
+# Tile cards: one tile per value, arranged in a grid.
+# Dashboard -> Edit -> Add card -> Manual, then paste this YAML.
+# Uses only core cards. Replace "hodzovo" with the name of your stop.
+type: grid
+columns: 2
+square: false
+cards:
+  - type: tile
+    entity: sensor.hodzovo_next_departure
+    name: Next departure
+    icon: mdi:bus-clock
+  - type: tile
+    entity: sensor.hodzovo_next_line
+    name: Line
+    icon: mdi:bus
+    state_content:
+      - state
+      - destination
+  - type: tile
+    entity: sensor.hodzovo_delay
+    name: Delay
+    icon: mdi:timer-alert-outline
+  - type: tile
+    entity: binary_sensor.hodzovo_time_to_leave
+    name: Time to leave
+    icon: mdi:walk
+    color: green
+    state_content:
+      - state
+      - line
+  - type: tile
+    entity: sensor.hodzovo_departure_1
+    name: "1st"
+    state_content:
+      - line
+      - destination
+      - state
+  - type: tile
+    entity: sensor.hodzovo_departure_2
+    name: "2nd"
+    state_content:
+      - line
+      - destination
+      - state
+  - type: tile
+    entity: sensor.hodzovo_departure_3
+    name: "3rd"
+    state_content:
+      - line
+      - destination
+      - state
+  - type: tile
+    entity: binary_sensor.hodzovo_disruption
+    name: Service alert
+    color: orange
+  - type: tile
+    entity: binary_sensor.hodzovo_realtime_connected
+    name: Realtime feed

@@ -1,0 +1,327 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add an imhd.sk stop",
+        "description": "Realtime departures from imhd.sk (unofficial integration). Each configured stop keeps one connection to imhd.sk.",
+        "data": {
+          "city": "City",
+          "method": "How to find the stop"
+        },
+        "data_description": {
+          "city": "The imhd.sk city / region the stop belongs to.",
+          "method": "Nearest stops are looked up around your Home Assistant home location or a point on the map."
+        }
+      },
+      "reconfigure": {
+        "title": "Change the stop",
+        "description": "Pick a new stop for this entry. The name and the other filters are kept; the platform filter is cleared, because platforms belong to a stop.",
+        "data": {
+          "city": "City",
+          "method": "How to find the stop"
+        },
+        "data_description": {
+          "city": "The imhd.sk city / region the stop belongs to.",
+          "method": "Nearest stops are looked up around your Home Assistant home location or a point on the map."
+        }
+      },
+      "location": {
+        "title": "Pick a location",
+        "description": "Stops nearest to this point will be offered.",
+        "data": {
+          "location": "Location"
+        }
+      },
+      "search": {
+        "title": "Search stops",
+        "data": {
+          "query": "Stop name"
+        },
+        "data_description": {
+          "query": "Part of the stop name, for example {example}"
+        }
+      },
+      "stop_id": {
+        "title": "Stop ID or imhd.sk URL",
+        "data": {
+          "stop": "Stop ID or URL"
+        },
+        "data_description": {
+          "stop": "A numeric stop ID or the address of an imhd.sk online departure board, for example {example_url}"
+        }
+      },
+      "pick_stop": {
+        "title": "Pick the stop",
+        "data": {
+          "stop_choice": "Stop"
+        }
+      },
+      "settings": {
+        "title": "Stop settings",
+        "description": "{stop}\n\nimhd.sk departure board: {url}",
+        "data": {
+          "name": "Name",
+          "platforms": "Platforms",
+          "lines": "Lines",
+          "exclude_lines": "Excluded lines",
+          "direction": "Direction",
+          "max_departures": "Maximum departures",
+          "walking_time": "Walking time to the stop",
+          "time_to_leave_window": "Time to leave window",
+          "departure_sensors": "Per-departure sensors",
+          "timetable": "Scheduled departures"
+        },
+        "data_description": {
+          "name": "Used for the device and the entity ids, e.g. `sensor.hodzovo_departures` for the name Hodzovo.",
+          "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
+          "lines": "Only show these lines (exact match, case-insensitive). Leave empty for all lines.",
+          "exclude_lines": "Never show these lines.",
+          "direction": "Only show departures whose destination or terminal stop contains one of these texts (case and diacritics are ignored).",
+          "max_departures": "How many departures the main sensor lists (1-30).",
+          "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
+          "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10).",
+          "timetable": "Also list departures from the imhd.sk timetable beyond what the realtime feed covers (it sends only about the next two departures per line and direction). The timetable page is fetched about every 2 hours."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to imhd.sk.",
+      "stop_not_found": "The stop was not found on imhd.sk.",
+      "invalid_stop": "Enter a numeric stop ID or an imhd.sk link (a departure board link with `st=` or a `/zastavka/` stop page).",
+      "no_stops_found": "No stops were found.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This stop is already configured with the same name.",
+      "reconfigure_successful": "The stop was changed.",
+      "cannot_connect": "Failed to connect to imhd.sk.",
+      "stop_not_found": "The stop was not found on imhd.sk.",
+      "invalid_stop": "The stop could not be understood.",
+      "unknown": "Unexpected error.",
+      "yaml_managed": "This stop comes from your YAML configuration (`imhd:`). Change the stop there and restart Home Assistant."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Departure filters",
+        "data": {
+          "platforms": "Platforms",
+          "lines": "Lines",
+          "exclude_lines": "Excluded lines",
+          "direction": "Direction",
+          "max_departures": "Maximum departures",
+          "walking_time": "Walking time to the stop",
+          "time_to_leave_window": "Time to leave window",
+          "departure_sensors": "Per-departure sensors",
+          "timetable": "Scheduled departures"
+        },
+        "data_description": {
+          "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
+          "lines": "Only show these lines (exact match, case-insensitive). Leave empty for all lines.",
+          "exclude_lines": "Never show these lines.",
+          "direction": "Only show departures whose destination or terminal stop contains one of these texts (case and diacritics are ignored).",
+          "max_departures": "How many departures the main sensor lists (1-30).",
+          "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
+          "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10).",
+          "timetable": "Also list departures from the imhd.sk timetable beyond what the realtime feed covers (it sends only about the next two departures per line and direction). The timetable page is fetched about every 2 hours."
+        }
+      },
+      "yaml": {
+        "title": "Departure filters",
+        "description": "This stop comes from your YAML configuration (`imhd:`). Changes made here are replaced by the YAML settings at the next restart, so prefer editing the YAML file.",
+        "data": {
+          "platforms": "Platforms",
+          "lines": "Lines",
+          "exclude_lines": "Excluded lines",
+          "direction": "Direction",
+          "max_departures": "Maximum departures",
+          "walking_time": "Walking time to the stop",
+          "time_to_leave_window": "Time to leave window",
+          "departure_sensors": "Per-departure sensors",
+          "timetable": "Scheduled departures"
+        },
+        "data_description": {
+          "platforms": "Only show departures from these platforms. Leave empty for all platforms.",
+          "lines": "Only show these lines (exact match, case-insensitive). Leave empty for all lines.",
+          "exclude_lines": "Never show these lines.",
+          "direction": "Only show departures whose destination or terminal stop contains one of these texts (case and diacritics are ignored).",
+          "max_departures": "How many departures the main sensor lists (1-30).",
+          "walking_time": "Minutes you need to reach the stop. Departures you cannot catch any more are hidden.",
+          "time_to_leave_window": "The Time to leave sensor turns on this many minutes before you have to leave.",
+          "departure_sensors": "Number of extra sensors \"Departure 1\" … \"Departure N\" (0-10).",
+          "timetable": "Also list departures from the imhd.sk timetable beyond what the realtime feed covers (it sends only about the next two departures per line and direction). The timetable page is fetched about every 2 hours."
+        }
+      }
+    }
+  },
+  "selector": {
+    "method": {
+      "options": {
+        "nearest": "Nearest to my home location",
+        "location": "Nearest to a point on the map",
+        "search": "Search by name",
+        "stop_id": "Stop ID or imhd.sk URL"
+      }
+    },
+    "city": {
+      "options": {
+        "ba": "Bratislava",
+        "bb": "Banská Bystrica",
+        "hc": "Hlohovec",
+        "ke": "Košice",
+        "lm": "Liptovský Mikuláš",
+        "mt": "Martin",
+        "nr": "Nitra",
+        "nz": "Nové Zámky",
+        "pb": "Považská Bystrica",
+        "pd": "Prievidza",
+        "pn": "Piešťany",
+        "po": "Prešov",
+        "rk": "Ružomberok",
+        "se": "Senica",
+        "si": "Skalica",
+        "sn": "Spišská Nová Ves",
+        "tatry": "Poprad-Tatry",
+        "tn": "Trenčín",
+        "transport": "Slovakia & world (transport)",
+        "tt": "Trnava",
+        "za": "Žilina",
+        "zv": "Zvolen"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "disruption": {
+        "name": "Service alert"
+      },
+      "realtime_connected": {
+        "name": "Realtime connection"
+      },
+      "time_to_leave": {
+        "name": "Time to leave"
+      }
+    },
+    "sensor": {
+      "delay": {
+        "name": "Delay"
+      },
+      "departure": {
+        "name": "Departure {number}"
+      },
+      "departures": {
+        "name": "Departures"
+      },
+      "next_departure": {
+        "name": "Next departure"
+      },
+      "next_line": {
+        "name": "Next line"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Refresh",
+      "description": "Reconnects to imhd.sk and re-reads the stop details.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Stop",
+          "description": "Stop (config entry) to refresh. All stops when empty."
+        },
+        "entity_id": {
+          "name": "Entities",
+          "description": "Refresh the stops these entities belong to."
+        }
+      }
+    },
+    "get_departures": {
+      "name": "Get departures",
+      "description": "Returns the upcoming departures of a configured stop.",
+      "fields": {
+        "entity_id": {
+          "name": "Entity",
+          "description": "Any entity of the stop, e.g. its Departures sensor."
+        },
+        "config_entry_id": {
+          "name": "Stop",
+          "description": "The stop (config entry), used when no entity is given."
+        },
+        "line": {
+          "name": "Lines",
+          "description": "Only these lines."
+        },
+        "direction": {
+          "name": "Direction",
+          "description": "Only departures whose destination or terminal stop contains this text."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of departures (default: the stop's maximum departures)."
+        },
+        "min_minutes": {
+          "name": "Minimum minutes",
+          "description": "Skip departures leaving sooner than this."
+        }
+      }
+    },
+    "find_stops": {
+      "name": "Find stops",
+      "description": "Finds imhd.sk stops near a location (default: home) or by name.",
+      "fields": {
+        "city": {
+          "name": "City",
+          "description": "imhd.sk city / section code or city name."
+        },
+        "latitude": {
+          "name": "Latitude",
+          "description": "Latitude of the search point (default: home)."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Longitude of the search point (default: home)."
+        },
+        "query": {
+          "name": "Name",
+          "description": "Search by stop name instead of location."
+        }
+      }
+    }
+  },
+  "issues": {
+    "subscription_rejected": {
+      "title": "imhd.sk refused the connection for {name}",
+      "description": "imhd.sk refused the realtime connection for stop {stop_id} ({reason}). This usually means too many connections, for example too many configured stops or other imhd.sk boards open from the same IP address. The integration retries every 15 to 60 minutes; call the `imhd.refresh` action to retry now."
+    },
+    "yaml_entry_removed": {
+      "title": "Stop {name} was removed from YAML",
+      "description": "The stop {name} was imported from YAML but is no longer in the `imhd:` configuration. Delete the entry in Settings > Devices & services if you do not need it any more."
+    }
+  },
+  "exceptions": {
+    "cannot_fetch_stop": {
+      "message": "Cannot fetch stop {stop_id} from imhd.sk: {error}"
+    },
+    "entry_not_found": {
+      "message": "No imhd stop with config entry ID {entry_id}."
+    },
+    "entry_not_loaded": {
+      "message": "The stop {name} is not loaded."
+    },
+    "entity_not_found": {
+      "message": "{entity_id} is not an imhd entity."
+    },
+    "target_required": {
+      "message": "Provide an entity_id or a config_entry_id."
+    },
+    "invalid_city": {
+      "message": "Unknown imhd.sk city: {city}"
+    },
+    "request_failed": {
+      "message": "Request to imhd.sk failed: {error}"
+    }
+  }
+}

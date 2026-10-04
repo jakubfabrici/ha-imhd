@@ -1,0 +1,65 @@
+# imhd.yaml - IMHD.sk Departures, YAML configuration
+#
+# Include it from configuration.yaml:
+#
+#   imhd: !include imhd.yaml
+#
+# Every list item is one stop (one device with its own sensors). Items are
+# imported into regular config entries on start-up, so they also show up under
+# Settings -> Devices & services -> IMHD.sk Departures. To change an imported
+# stop, edit this file and restart Home Assistant.
+#
+# Only `city` and `stop` are required. Everything else has a sensible default.
+# The entity ids are derived from `name` (not from the HA language), e.g. name
+# "Hodzovo" gives sensor.hodzovo_departures, binary_sensor.hodzovo_time_to_leave,
+# ... A stop is identified by city + stop + name: changing the name creates a
+# new entry with new entity ids.
+#
+# `stop` accepts a stop id (83), an imhd.sk link (?st=83 board link or a
+# /zastavka/... stop page) or the exact stop name ("Hodžovo nám.").
+#
+# Personal use only (imhd.sk terms) - configure only the stops you need; every
+# stop keeps one connection to imhd.sk open, and its timetable page is fetched
+# about every 2 hours (see `timetable` below).
+
+# --- Bratislava: Hodzovo namestie (stop 83) ---------------------------------
+# A central trolleybus/bus hub. We only care about platforms A and B and we
+# need 3 minutes to walk there.
+- name: Hodzovo
+  city: ba                      # section code (see README) or city name
+  stop: 83                      # https://imhd.sk/ba/online-zastavkova-tabula?st=83
+                                # (stop: "Hodžovo nám." would work too)
+  platforms: ["A", "B"]         # platform labels (or ids); default: all platforms
+  exclude_lines: ["►"]          # hide unnumbered service trips (depot runs)
+  walking_time: 3               # departures you can no longer catch are hidden
+  time_to_leave_window: 2       # binary_sensor.hodzovo_time_to_leave is on 3-5 min before departure
+  max_departures: 10            # 1..30, length of the `departures` attribute
+  departure_sensors: 3          # creates sensor.hodzovo_departure_1 .. _3
+  timetable: true               # default: the realtime feed lists only ~2 departures per
+                                # line and direction (up to ~3 h ahead); the rest of the
+                                # list comes from the stop's timetable page, fetched about
+                                # every 2 h (source: timetable). false = feed only.
+
+# --- Kosice: Namestie osloboditelov (stop 1130) -----------------------------
+# Only trams 1 and 3 heading to Vazecka. Lines are strings - quote them.
+# imhd.sk has no platform labels here (platforms are ids 2474..2483) and shows
+# timetable departures (realtime: false, text "~5 min").
+- name: Namestie osloboditelov
+  city: ke
+  stop: 1130
+  lines: ["1", "3"]             # whitelist; default: all lines
+  direction: "Važecká"          # headsign or terminal stop must contain this text
+  walking_time: 6
+  departure_sensors: 2
+
+# --- Zilina: Hurbanova (stop 1831) -------------------------------------------
+# The stop can also be given as an imhd.sk URL, and the city as its full name.
+- name: Hurbanova
+  city: Žilina
+  stop: "https://imhd.sk/za/online-zastavkova-tabula?st=1831"
+  exclude_lines: ["50"]         # blacklist
+  direction:                    # a list means "any of these"
+    - Stodolova
+    - Jaseňová
+  max_departures: 8
+  departure_sensors: 0          # no per-departure sensors, just the main ones

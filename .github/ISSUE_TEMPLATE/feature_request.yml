@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an idea or an improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! Please describe the problem you want to solve,
+        not only the solution - there may be an easier way.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      placeholder: I would like to know when ... so that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How should it work? New attribute, entity, option, action, example ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Templates, automations or other integrations you tried.
+
+  - type: input
+    id: city
+    attributes:
+      label: City
+      description: If the request is about a specific city / imhd.sk section.
+      placeholder: "ke (Košice)"
+
+  - type: checkboxes
+    id: fair_use
+    attributes:
+      label: Fair use
+      options:
+        - label: The feature does not need more requests to imhd.sk than the integration makes today (or I explained why it is worth it).

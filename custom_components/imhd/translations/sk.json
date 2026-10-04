@@ -1,0 +1,327 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Pridať zastávku imhd.sk",
+        "description": "Odchody v reálnom čase z imhd.sk (neoficiálna integrácia). Každá nastavená zastávka udržiava jedno spojenie s imhd.sk.",
+        "data": {
+          "city": "Mesto",
+          "method": "Ako nájsť zastávku"
+        },
+        "data_description": {
+          "city": "Mesto / región imhd.sk, do ktorého zastávka patrí.",
+          "method": "Najbližšie zastávky sa hľadajú okolo domovskej polohy Home Assistantu alebo bodu na mape."
+        }
+      },
+      "reconfigure": {
+        "title": "Zmeniť zastávku",
+        "description": "Vyberte novú zastávku pre tento záznam. Názov a ostatné filtre zostanú zachované, filter nástupíšť sa vymaže, pretože nástupištia patria k zastávke.",
+        "data": {
+          "city": "Mesto",
+          "method": "Ako nájsť zastávku"
+        },
+        "data_description": {
+          "city": "Mesto / región imhd.sk, do ktorého zastávka patrí.",
+          "method": "Najbližšie zastávky sa hľadajú okolo domovskej polohy Home Assistantu alebo bodu na mape."
+        }
+      },
+      "location": {
+        "title": "Vyberte miesto",
+        "description": "Ponúknu sa zastávky najbližšie k tomuto bodu.",
+        "data": {
+          "location": "Miesto"
+        }
+      },
+      "search": {
+        "title": "Hľadať zastávky",
+        "data": {
+          "query": "Názov zastávky"
+        },
+        "data_description": {
+          "query": "Časť názvu zastávky, napríklad {example}"
+        }
+      },
+      "stop_id": {
+        "title": "ID zastávky alebo odkaz imhd.sk",
+        "data": {
+          "stop": "ID zastávky alebo odkaz"
+        },
+        "data_description": {
+          "stop": "Číselné ID zastávky alebo adresa online zastávkovej tabule imhd.sk, napríklad {example_url}"
+        }
+      },
+      "pick_stop": {
+        "title": "Vyberte zastávku",
+        "data": {
+          "stop_choice": "Zastávka"
+        }
+      },
+      "settings": {
+        "title": "Nastavenia zastávky",
+        "description": "{stop}\n\nZastávková tabuľa imhd.sk: {url}",
+        "data": {
+          "name": "Názov",
+          "platforms": "Nástupištia",
+          "lines": "Linky",
+          "exclude_lines": "Vylúčené linky",
+          "direction": "Smer",
+          "max_departures": "Maximálny počet odchodov",
+          "walking_time": "Čas chôdze na zastávku",
+          "time_to_leave_window": "Okno na odchod z domu",
+          "departure_sensors": "Senzory jednotlivých odchodov",
+          "timetable": "Odchody podľa cestovného poriadku"
+        },
+        "data_description": {
+          "name": "Použije sa v názve zariadenia a v ID entít, napr. `sensor.hodzovo_departures` pre názov Hodzovo.",
+          "platforms": "Zobrazovať iba odchody z týchto nástupíšť. Nechajte prázdne pre všetky nástupištia.",
+          "lines": "Zobrazovať iba tieto linky (presná zhoda, bez ohľadu na veľkosť písmen). Nechajte prázdne pre všetky linky.",
+          "exclude_lines": "Tieto linky nikdy nezobrazovať.",
+          "direction": "Zobrazovať iba odchody, ktorých cieľ alebo konečná zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
+          "max_departures": "Koľko odchodov obsahuje hlavný senzor (1 – 30).",
+          "walking_time": "Počet minút, ktoré potrebujete na cestu na zastávku. Spoje, ktoré už nestihnete, sa skryjú.",
+          "time_to_leave_window": "Senzor Čas vyraziť sa zapne toľko minút pred tým, ako musíte vyraziť.",
+          "departure_sensors": "Počet ďalších senzorov „Odchod 1“ … „Odchod N“ (0 – 10).",
+          "timetable": "Doplniť aj odchody z cestovného poriadku imhd.sk nad rámec údajov v reálnom čase (tie obsahujú len asi dva najbližšie odchody každej linky v každom smere). Stránka s cestovným poriadkom sa načíta približne každé 2 hodiny."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nepodarilo sa pripojiť k imhd.sk.",
+      "stop_not_found": "Zastávka sa na imhd.sk nenašla.",
+      "invalid_stop": "Zadajte číselné ID zastávky alebo odkaz imhd.sk (odkaz na zastávkovú tabuľu s `st=` alebo stránku zastávky `/zastavka/`).",
+      "no_stops_found": "Nenašli sa žiadne zastávky.",
+      "unknown": "Neočakávaná chyba."
+    },
+    "abort": {
+      "already_configured": "Táto zastávka je už nastavená s rovnakým názvom.",
+      "reconfigure_successful": "Zastávka bola zmenená.",
+      "cannot_connect": "Nepodarilo sa pripojiť k imhd.sk.",
+      "stop_not_found": "Zastávka sa na imhd.sk nenašla.",
+      "invalid_stop": "Zastávke sa nepodarilo porozumieť.",
+      "unknown": "Neočakávaná chyba.",
+      "yaml_managed": "Táto zastávka pochádza z vašej YAML konfigurácie (`imhd:`). Zmeňte zastávku tam a reštartujte Home Assistant."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Filtre odchodov",
+        "data": {
+          "platforms": "Nástupištia",
+          "lines": "Linky",
+          "exclude_lines": "Vylúčené linky",
+          "direction": "Smer",
+          "max_departures": "Maximálny počet odchodov",
+          "walking_time": "Čas chôdze na zastávku",
+          "time_to_leave_window": "Okno na odchod z domu",
+          "departure_sensors": "Senzory jednotlivých odchodov",
+          "timetable": "Odchody podľa cestovného poriadku"
+        },
+        "data_description": {
+          "platforms": "Zobrazovať iba odchody z týchto nástupíšť. Nechajte prázdne pre všetky nástupištia.",
+          "lines": "Zobrazovať iba tieto linky (presná zhoda, bez ohľadu na veľkosť písmen). Nechajte prázdne pre všetky linky.",
+          "exclude_lines": "Tieto linky nikdy nezobrazovať.",
+          "direction": "Zobrazovať iba odchody, ktorých cieľ alebo konečná zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
+          "max_departures": "Koľko odchodov obsahuje hlavný senzor (1 – 30).",
+          "walking_time": "Počet minút, ktoré potrebujete na cestu na zastávku. Spoje, ktoré už nestihnete, sa skryjú.",
+          "time_to_leave_window": "Senzor Čas vyraziť sa zapne toľko minút pred tým, ako musíte vyraziť.",
+          "departure_sensors": "Počet ďalších senzorov „Odchod 1“ … „Odchod N“ (0 – 10).",
+          "timetable": "Doplniť aj odchody z cestovného poriadku imhd.sk nad rámec údajov v reálnom čase (tie obsahujú len asi dva najbližšie odchody každej linky v každom smere). Stránka s cestovným poriadkom sa načíta približne každé 2 hodiny."
+        }
+      },
+      "yaml": {
+        "title": "Filtre odchodov",
+        "description": "Táto zastávka pochádza z vašej YAML konfigurácie (`imhd:`). Zmeny urobené tu pri ďalšom reštarte nahradia nastavenia z YAML, preto radšej upravte YAML súbor.",
+        "data": {
+          "platforms": "Nástupištia",
+          "lines": "Linky",
+          "exclude_lines": "Vylúčené linky",
+          "direction": "Smer",
+          "max_departures": "Maximálny počet odchodov",
+          "walking_time": "Čas chôdze na zastávku",
+          "time_to_leave_window": "Okno na odchod z domu",
+          "departure_sensors": "Senzory jednotlivých odchodov",
+          "timetable": "Odchody podľa cestovného poriadku"
+        },
+        "data_description": {
+          "platforms": "Zobrazovať iba odchody z týchto nástupíšť. Nechajte prázdne pre všetky nástupištia.",
+          "lines": "Zobrazovať iba tieto linky (presná zhoda, bez ohľadu na veľkosť písmen). Nechajte prázdne pre všetky linky.",
+          "exclude_lines": "Tieto linky nikdy nezobrazovať.",
+          "direction": "Zobrazovať iba odchody, ktorých cieľ alebo konečná zastávka obsahuje niektorý z týchto textov (veľkosť písmen a diakritika sa ignorujú).",
+          "max_departures": "Koľko odchodov obsahuje hlavný senzor (1 – 30).",
+          "walking_time": "Počet minút, ktoré potrebujete na cestu na zastávku. Spoje, ktoré už nestihnete, sa skryjú.",
+          "time_to_leave_window": "Senzor Čas vyraziť sa zapne toľko minút pred tým, ako musíte vyraziť.",
+          "departure_sensors": "Počet ďalších senzorov „Odchod 1“ … „Odchod N“ (0 – 10).",
+          "timetable": "Doplniť aj odchody z cestovného poriadku imhd.sk nad rámec údajov v reálnom čase (tie obsahujú len asi dva najbližšie odchody každej linky v každom smere). Stránka s cestovným poriadkom sa načíta približne každé 2 hodiny."
+        }
+      }
+    }
+  },
+  "selector": {
+    "method": {
+      "options": {
+        "nearest": "Najbližšie k mojej domovskej polohe",
+        "location": "Najbližšie k bodu na mape",
+        "search": "Hľadať podľa názvu",
+        "stop_id": "ID zastávky alebo odkaz imhd.sk"
+      }
+    },
+    "city": {
+      "options": {
+        "ba": "Bratislava",
+        "bb": "Banská Bystrica",
+        "hc": "Hlohovec",
+        "ke": "Košice",
+        "lm": "Liptovský Mikuláš",
+        "mt": "Martin",
+        "nr": "Nitra",
+        "nz": "Nové Zámky",
+        "pb": "Považská Bystrica",
+        "pd": "Prievidza",
+        "pn": "Piešťany",
+        "po": "Prešov",
+        "rk": "Ružomberok",
+        "se": "Senica",
+        "si": "Skalica",
+        "sn": "Spišská Nová Ves",
+        "tatry": "Poprad-Tatry",
+        "tn": "Trenčín",
+        "transport": "Slovensko a svet (transport)",
+        "tt": "Trnava",
+        "za": "Žilina",
+        "zv": "Zvolen"
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "disruption": {
+        "name": "Mimoriadnosť"
+      },
+      "realtime_connected": {
+        "name": "Spojenie v reálnom čase"
+      },
+      "time_to_leave": {
+        "name": "Čas vyraziť"
+      }
+    },
+    "sensor": {
+      "delay": {
+        "name": "Meškanie"
+      },
+      "departure": {
+        "name": "Odchod {number}"
+      },
+      "departures": {
+        "name": "Odchody"
+      },
+      "next_departure": {
+        "name": "Najbližší odchod"
+      },
+      "next_line": {
+        "name": "Najbližšia linka"
+      }
+    }
+  },
+  "services": {
+    "refresh": {
+      "name": "Obnoviť",
+      "description": "Znovu sa pripojí k imhd.sk a načíta údaje o zastávke.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Zastávka",
+          "description": "Zastávka (záznam), ktorá sa má obnoviť. Ak je prázdne, obnovia sa všetky."
+        },
+        "entity_id": {
+          "name": "Entity",
+          "description": "Obnoviť zastávky, ku ktorým tieto entity patria."
+        }
+      }
+    },
+    "get_departures": {
+      "name": "Získať odchody",
+      "description": "Vráti najbližšie odchody z nastavenej zastávky.",
+      "fields": {
+        "entity_id": {
+          "name": "Entita",
+          "description": "Ľubovoľná entita zastávky, napr. jej senzor Odchody."
+        },
+        "config_entry_id": {
+          "name": "Zastávka",
+          "description": "Zastávka (záznam), ak nie je zadaná entita."
+        },
+        "line": {
+          "name": "Linky",
+          "description": "Iba tieto linky."
+        },
+        "direction": {
+          "name": "Smer",
+          "description": "Iba odchody, ktorých cieľ alebo konečná zastávka obsahuje tento text."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximálny počet odchodov (predvolene maximálny počet odchodov zastávky)."
+        },
+        "min_minutes": {
+          "name": "Minimum minút",
+          "description": "Vynechať odchody, ktoré odchádzajú skôr."
+        }
+      }
+    },
+    "find_stops": {
+      "name": "Nájsť zastávky",
+      "description": "Nájde zastávky imhd.sk pri danom mieste (predvolene domov) alebo podľa názvu.",
+      "fields": {
+        "city": {
+          "name": "Mesto",
+          "description": "Kód mesta / sekcie imhd.sk alebo názov mesta."
+        },
+        "latitude": {
+          "name": "Zemepisná šírka",
+          "description": "Zemepisná šírka bodu hľadania (predvolene domov)."
+        },
+        "longitude": {
+          "name": "Zemepisná dĺžka",
+          "description": "Zemepisná dĺžka bodu hľadania (predvolene domov)."
+        },
+        "query": {
+          "name": "Názov",
+          "description": "Hľadať podľa názvu zastávky namiesto polohy."
+        }
+      }
+    }
+  },
+  "issues": {
+    "subscription_rejected": {
+      "title": "imhd.sk odmietlo spojenie pre {name}",
+      "description": "imhd.sk odmietlo spojenie v reálnom čase pre zastávku {stop_id} ({reason}). Zvyčajne to znamená príliš veľa spojení, napríklad príliš veľa nastavených zastávok alebo iných otvorených tabúľ imhd.sk z rovnakej IP adresy. Integrácia to skúša znova každých 15 až 60 minút; akciou `imhd.refresh` to môžete skúsiť hneď."
+    },
+    "yaml_entry_removed": {
+      "title": "Zastávka {name} bola odstránená z YAML",
+      "description": "Zastávka {name} bola importovaná z YAML, ale v konfigurácii `imhd:` už nie je. Ak ju už nepotrebujete, odstráňte záznam v Nastavenia > Zariadenia a služby."
+    }
+  },
+  "exceptions": {
+    "cannot_fetch_stop": {
+      "message": "Zastávku {stop_id} sa nepodarilo načítať z imhd.sk: {error}"
+    },
+    "entry_not_found": {
+      "message": "Neexistuje zastávka imhd so záznamom {entry_id}."
+    },
+    "entry_not_loaded": {
+      "message": "Zastávka {name} nie je načítaná."
+    },
+    "entity_not_found": {
+      "message": "{entity_id} nie je entita imhd."
+    },
+    "target_required": {
+      "message": "Zadajte entity_id alebo config_entry_id."
+    },
+    "invalid_city": {
+      "message": "Neznáme mesto imhd.sk: {city}"
+    },
+    "request_failed": {
+      "message": "Požiadavka na imhd.sk zlyhala: {error}"
+    }
+  }
+}

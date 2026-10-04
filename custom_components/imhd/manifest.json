@@ -1,0 +1,13 @@
+{
+  "domain": "imhd",
+  "name": "IMHD.sk Departures",
+  "codeowners": ["@jakubfabrici"],
+  "config_flow": true,
+  "documentation": "https://github.com/jakubfabrici/ha-imhd",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/jakubfabrici/ha-imhd/issues",
+  "loggers": ["imhd", "socketio", "engineio"],
+  "requirements": ["python-socketio[asyncio_client]>=5.11.0"],
+  "version": "1.0.0"
+}

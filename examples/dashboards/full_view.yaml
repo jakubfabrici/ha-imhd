@@ -1,0 +1,163 @@
+# A complete dashboard with one "Departures" view for the stop "Hodzovo".
+# Core cards only - no custom cards or HACS frontend plugins needed.
+#
+# How to use it:
+#   * New dashboard: Settings -> Dashboards -> Add dashboard -> "New dashboard
+#     from scratch", open it, ⋮ -> Edit dashboard -> ⋮ -> Raw configuration
+#     editor, and paste this whole file.
+#   * Existing dashboard: copy only the item under `views:` (from `- title:`)
+#     into your dashboard's raw configuration.
+#   * YAML-mode dashboard: point `filename:` at this file.
+#
+# Replace "hodzovo" with the name of your stop (search & replace).
+title: Public transport
+views:
+  - title: Departures
+    path: departures
+    icon: mdi:bus-clock
+    type: sections
+    max_columns: 3
+    sections:
+      # --- Column 1: departure board ----------------------------------------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Departure board
+            heading_style: title
+            icon: mdi:bus-stop
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {%- set s = 'sensor.hodzovo_departures' -%}
+              {%- set deps = state_attr(s, 'departures') or [] -%}
+              ## <ha-icon icon="mdi:bus-stop"></ha-icon> {{ state_attr(s, 'stop_name') or 'Departures' }}
+              {% if deps %}
+              | | Line | Destination | Time | In |
+              |:-:|:-:|:--|:-:|--:|
+              {%- for d in deps[:8] %}
+              | {{ '<ha-icon icon="mdi:access-point"></ha-icon>' if d.realtime else '<ha-icon icon="mdi:calendar-clock"></ha-icon>' }} | **{{ d.line }}** | {{ d.destination }} | {{ d.time }}{{ ' <font color="#e74c3c">+' ~ d.delay ~ '</font>' if d.delay and d.delay > 0 }} | {{ 'now' if d.minutes == 0 else d.minutes ~ ' min' if d.minutes < 60 else '' }} |
+              {%- endfor %}
+              {% else %}
+              *No departures at the moment.*
+              {% endif %}
+              <sub><ha-icon icon="mdi:access-point"></ha-icon> live · <ha-icon icon="mdi:calendar-clock"></ha-icon> timetable · updated {{ as_timestamp(state_attr(s, 'last_update'), 0) | timestamp_custom('%H:%M') if state_attr(s, 'last_update') else '–' }} · data: imhd.sk</sub>
+          # Service alerts of imhd.sk, shown only while there is one.
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: binary_sensor.hodzovo_disruption
+                state: "on"
+            card:
+              type: markdown
+              content: |
+                ### <ha-icon icon="mdi:alert-outline"></ha-icon> Service alert
+                {% for m in state_attr('binary_sensor.hodzovo_disruption', 'messages') or [] %}
+                - {{ m }}
+                {% endfor %}
+
+      # --- Column 2: tiles --------------------------------------------------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Next departures
+            heading_style: title
+            icon: mdi:clock-fast
+          - type: tile
+            entity: sensor.hodzovo_next_departure
+            name: Next departure
+            icon: mdi:bus-clock
+          - type: tile
+            entity: sensor.hodzovo_next_line
+            name: Line
+            icon: mdi:bus
+            state_content:
+              - state
+              - destination
+          - type: tile
+            entity: sensor.hodzovo_delay
+            name: Delay
+            icon: mdi:timer-alert-outline
+          - type: tile
+            entity: binary_sensor.hodzovo_time_to_leave
+            name: Time to leave
+            icon: mdi:walk
+            color: green
+          - type: tile
+            entity: sensor.hodzovo_departure_1
+            name: "1st"
+            grid_options:
+              columns: full
+            state_content:
+              - line
+              - destination
+              - state
+          - type: tile
+            entity: sensor.hodzovo_departure_2
+            name: "2nd"
+            grid_options:
+              columns: full
+            state_content:
+              - line
+              - destination
+              - state
+          - type: tile
+            entity: sensor.hodzovo_departure_3
+            name: "3rd"
+            grid_options:
+              columns: full
+            state_content:
+              - line
+              - destination
+              - state
+
+      # --- Column 3: details & status ---------------------------------------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Details
+            heading_style: title
+            icon: mdi:information-outline
+          - type: entities
+            grid_options:
+              columns: full
+            state_color: true
+            entities:
+              - entity: sensor.hodzovo_departures
+                name: Next departure in
+              - type: attribute
+                entity: sensor.hodzovo_departures
+                attribute: next_line
+                name: Line
+                icon: mdi:bus
+              - type: attribute
+                entity: sensor.hodzovo_departures
+                attribute: next_destination
+                name: Destination
+                icon: mdi:sign-direction
+              - entity: sensor.hodzovo_next_departure
+                name: Departs at
+                format: time
+              - type: attribute
+                entity: sensor.hodzovo_departures
+                attribute: next_platform
+                name: Platform
+                icon: mdi:sign-real-estate
+              - type: section
+                label: Status
+              - entity: binary_sensor.hodzovo_time_to_leave
+                name: Time to leave
+              - entity: binary_sensor.hodzovo_disruption
+                name: Service alert
+              - entity: binary_sensor.hodzovo_realtime_connected
+                name: Realtime feed
+                secondary_info: last-changed
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |
+              {%- set s = 'sensor.hodzovo_departures' -%}
+              {%- set deps = state_attr(s, 'departures') or [] -%}
+              **Lines served now:** {{ (state_attr(s, 'lines') or []) | join(', ') or '–' }}<br>
+              **Within 15 min:** {{ deps | selectattr('minutes', 'le', 15) | list | count }} departures<br>
+              **Next low-floor:** {% set lf = deps | selectattr('low_floor') | first %}{{ lf.line ~ ' at ' ~ lf.time if lf is defined else 'none known' }}

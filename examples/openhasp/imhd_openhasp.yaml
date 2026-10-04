@@ -1,0 +1,129 @@
+# openHASP departure board for IMHD.sk Departures
+#
+# Renders the next 5 departures of one stop on page 1 of an openHASP plate
+# (320x480 portrait). Upload pages.jsonl from this folder to the plate first.
+#
+# Settings -> Automations & scenes -> Create automation -> ⋮ -> Edit in YAML,
+# then paste this file. (For automations.yaml, prefix the first line with "- "
+# and indent the rest by two spaces.)
+#
+# Needs: the MQTT integration, connected to the same broker as the plate.
+#
+# Object ids used on page 1 (see pages.jsonl):
+#   2 stop name, 3 sub-title
+#   row i (0..4): badge 10+4i, direction 11+4i, time 12+4i, separator 13+4i
+#   30 "Updated HH:MM", 31 status (LIVE / TIMETABLE / OFFLINE / ALERT)
+alias: "IMHD: openHASP departure board"
+description: Shows the next 5 departures of a stop on an openHASP plate.
+
+variables:
+  # ---------------------------------------------------------------- inputs --
+  # openHASP plate name, i.e. the <plate> part of hasp/<plate>/... topics.
+  plate: plate01
+  # The main departures sensor of your stop. Use the same entity in the
+  # first trigger below.
+  departures_sensor: sensor.hodzovo_departures
+  # Optional: the service-alert binary sensor of the same stop ("" to ignore).
+  disruption_sensor: binary_sensor.hodzovo_disruption
+  # Header sub-title; leave "" to show "<city> • <lines>".
+  subtitle: ""
+  # --------------------------------------------------------------------------
+
+triggers:
+  # Any state or attribute change of the departures sensor (the integration
+  # recomputes the minutes every 30 seconds).
+  - trigger: state
+    entity_id: sensor.hodzovo_departures
+  # Redraw when a plate comes back online (any plate; filtered below).
+  - trigger: mqtt
+    topic: hasp/+/LWT
+    payload: online
+  - trigger: homeassistant
+    event: start
+  # Safety net: refresh the footer clock even when nothing changes at night.
+  - trigger: time_pattern
+    minutes: /5
+
+conditions:
+  - "{{ trigger.platform != 'mqtt' or trigger.topic == 'hasp/' ~ plate ~ '/LWT' }}"
+
+actions:
+  - variables:
+      deps: "{{ (state_attr(departures_sensor, 'departures') or [])[:5] }}"
+      available: "{{ states(departures_sensor) not in ['unavailable'] and state_attr(departures_sensor, 'departures') is not none }}"
+      commands: >-
+        {%- set s = departures_sensor -%}
+        {%- set ns = namespace(cmds=[]) -%}
+        {#- The plate's built-in font has the Slovak letters but no "►", "·" or
+            "…", so ">", "•" and "..." are sent instead. 22 characters fit the
+            direction column at text_font 16. -#}
+        {%- set max_len = 22 -%}
+
+        {#- header -#}
+        {%- set title = state_attr(s, 'stop_name') or state_attr(s, 'friendly_name') or 'Departures' -%}
+        {%- set lines = (state_attr(s, 'lines') or []) | map('replace', '►', '>') | join(', ') -%}
+        {%- set sub = subtitle if subtitle else (state_attr(s, 'city') or '') ~ (' • ' ~ lines if lines else '') -%}
+        {%- set ns.cmds = ns.cmds + [['p1b2.text', title], ['p1b3.text', sub]] -%}
+
+        {#- rows -#}
+        {%- for i in range(5) -%}
+          {%- set badge = 'p1b' ~ (10 + 4 * i) -%}
+          {%- set dirn = 'p1b' ~ (11 + 4 * i) -%}
+          {%- set tm = 'p1b' ~ (12 + 4 * i) -%}
+          {%- if i < deps | count -%}
+            {%- set d = deps[i] -%}
+            {%- set m = d.minutes | int(0) -%}
+            {#- Shorten a long destination after the last whole word. -#}
+            {%- set dest = (d.destination or '') | replace('►', '>') -%}
+            {%- if dest | length > max_len -%}
+              {%- set cut = dest[:max_len + 1] -%}
+              {%- set cut = cut[:cut.rfind(' ')] if ' ' in cut else cut[:max_len] -%}
+              {%- set dest = cut.rstrip(' >-,.') ~ '...' -%}
+            {%- endif -%}
+            {%- set ns.cmds = ns.cmds + [
+                [badge ~ '.text', d.line | string | replace('►', '>')],
+                [badge ~ '.hidden', '0'],
+                [dirn ~ '.text', dest],
+                [tm ~ '.text', (m ~ 'min') if m < 60 else d.time],
+                [tm ~ '.text_color', '#00FF88' if m < 5 else ('#FFCC00' if m < 15 else '#FFFFFF')]
+              ] -%}
+          {%- else -%}
+            {%- set ns.cmds = ns.cmds + [
+                [badge ~ '.hidden', '1'],
+                [dirn ~ '.text', ('No departures' if i == 0 and available else ('No data' if i == 0 else ''))],
+                [tm ~ '.text', '']
+              ] -%}
+          {%- endif -%}
+        {%- endfor -%}
+
+        {#- footer -#}
+        {%- set updated = state_attr(s, 'last_update') -%}
+        {%- set hhmm = as_timestamp(updated, 0) | timestamp_custom('%H:%M') if updated else now().strftime('%H:%M') -%}
+        {%- set connected = state_attr(s, 'connected') -%}
+        {%- set alert = disruption_sensor != '' and is_state(disruption_sensor, 'on') -%}
+        {%- if alert -%}
+          {%- set status, color = 'ALERT', '#FFCC00' -%}
+        {%- elif connected == false or not available -%}
+          {%- set status, color = 'OFFLINE', '#E94560' -%}
+        {%- elif deps | selectattr('realtime') | list | count > 0 -%}
+          {%- set status, color = 'LIVE', '#00FF88' -%}
+        {%- else -%}
+          {%- set status, color = 'TIMETABLE', '#4488CC' -%}
+        {%- endif -%}
+        {%- set ns.cmds = ns.cmds + [
+            ['p1b30.text', 'Updated ' ~ hhmm],
+            ['p1b31.text', status],
+            ['p1b31.text_color', color]
+          ] -%}
+        {{ ns.cmds }}
+  - repeat:
+      for_each: "{{ commands }}"
+      sequence:
+        - action: mqtt.publish
+          data:
+            topic: "hasp/{{ plate }}/command/{{ repeat.item[0] }}"
+            payload: "{{ repeat.item[1] }}"
+            qos: 0
+            retain: false
+
+mode: restart

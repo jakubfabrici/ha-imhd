@@ -1,0 +1,114 @@
+name: Bug report
+description: Something does not work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem!
+
+        Before you start: if the departures are wrong **on imhd.sk itself**,
+        please contact imhd.sk - this integration only shows what imhd.sk publishes.
+        Please remove anything private (tokens, addresses, your home location)
+        from logs and diagnostics before posting.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the problem.
+      placeholder: The departures sensor stays "unknown" although imhd.sk shows departures.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add stop 83 in Bratislava with walking time 3
+        2. Wait until ...
+        3. See ...
+
+  - type: input
+    id: stop
+    attributes:
+      label: City and stop
+      description: City (section code) and stop id or imhd.sk link of an affected stop.
+      placeholder: "ba, stop 83 (https://imhd.sk/ba/online-zastavkova-tabula?st=83)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: setup
+    attributes:
+      label: How is the stop configured?
+      options:
+        - UI (config flow)
+        - YAML (imhd.yaml)
+        - Both / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: Settings → About.
+      placeholder: "2025.10.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Installation type
+      options:
+        - Home Assistant OS
+        - Home Assistant Container
+        - Home Assistant Supervised
+        - Home Assistant Core
+        - Other / not sure
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >-
+        Settings → Devices & services → IMHD.sk Departures → ⋮ of the stop's
+        entry → Download diagnostics, then drag & drop the file here.
+        It helps a lot, especially for parsing problems.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        Enable debug logging (integration page → ⋮ → Enable debug logging),
+        reproduce the problem, disable debug logging and paste the relevant lines.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched the existing issues and this is not a duplicate.
+          required: true
+        - label: I removed private information (tokens, addresses, coordinates) from what I posted.
+          required: true
