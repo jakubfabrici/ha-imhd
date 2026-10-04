@@ -29,14 +29,18 @@ MAIN = "sensor.hodzovo_departures"
 
 
 @pytest.fixture
-def hass_config_dir(hass_tmp_config_dir: str) -> str:
-    """Use a temporary config directory that holds the blueprint."""
-    target = Path(hass_tmp_config_dir, "blueprints", "automation", "imhd")
-    target.mkdir(parents=True, exist_ok=True)
+def blueprint_config_dir(hass: HomeAssistant, tmp_path: Path) -> None:
+    """Point `hass` at a temporary config directory that holds the blueprint.
+
+    Older test plugins have no `hass_config_dir` fixture to override.
+    """
+    target = tmp_path / "blueprints" / "automation" / "imhd"
+    target.mkdir(parents=True)
     shutil.copy(BLUEPRINT, target)
-    return hass_tmp_config_dir
+    hass.config.config_dir = str(tmp_path)
 
 
+@pytest.mark.usefixtures("blueprint_config_dir")
 async def test_blueprint_variables_match_the_integration(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

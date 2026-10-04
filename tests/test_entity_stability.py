@@ -7,12 +7,15 @@ from datetime import timedelta
 from typing import Any
 
 from freezegun.api import FrozenDateTimeFactory
+import pytest
 
 from homeassistant.const import EVENT_STATE_CHANGED, STATE_OFF, STATE_ON, STATE_UNKNOWN
 from homeassistant.core import Event, HomeAssistant, State, callback
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
+    async_fire_time_changed_exact,
     mock_restore_cache_with_extra_data,
 )
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
@@ -24,20 +27,22 @@ from custom_components.imhd.const import (
     CONF_WALKING_TIME,
     DOMAIN,
 )
-from custom_components.imhd.coordinator import INFO_GRACE
+from custom_components.imhd.coordinator import EMPTY_PLATFORM_GRACE, INFO_GRACE, PUBLISH_DELAY
 
-from .conftest import NOW, FakeFeed, load_fixture, row, sample_tabs, setup_entry, tabs
+from .conftest import NOW, FakeFeed, load_fixture, load_json, row, sample_tabs, setup_entry, tabs
 
 ALERT = "Linka 3: výluka."
 ITEXT = ["", "", ALERT + " " * 20, ""]
 DISRUPTION = "binary_sensor.hodzovo_disruption"
 MAIN = "sensor.hodzovo_departures"
 NEXT = "sensor.hodzovo_next_departure"
+FIRST = "sensor.hodzovo_departure_1"
+LEAVE = "binary_sensor.hodzovo_time_to_leave"
 PER_DEPARTURE = (
     NEXT,
     "sensor.hodzovo_next_line",
     "sensor.hodzovo_delay",
-    "sensor.hodzovo_departure_1",
+    FIRST,
     "sensor.hodzovo_departure_2",
     "sensor.hodzovo_departure_3",
 )
@@ -69,6 +74,11 @@ def record(hass: HomeAssistant, *entity_ids: str) -> dict[str, list[tuple[State,
 def states(changes: list[tuple[State, State]]) -> list[str]:
     """Return the sequence of new states (attribute-only changes collapsed)."""
     return [new.state for old, new in changes if old is None or old.state != new.state]
+
+
+def departure_lines(hass: HomeAssistant) -> list[str]:
+    """Return the lines listed by the main sensor."""
+    return [dep["line"] for dep in hass.states.get(MAIN).attributes["departures"]]
 
 
 async def test_alert_survives_reconnect(
@@ -506,3 +516,312 @@ async def test_frequently_changing_attributes_not_recorded(
     await setup_entry(hass, config_entry)
     unrecorded = hass.states.get(MAIN).state_info["unrecorded_attributes"]
     assert {"departures", "info", "last_update", "next_minutes"} <= unrecorded
+
+
+async def test_vehicle_moves_are_written_with_the_tick(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Shown vehicles passing stops write nothing until the 30 s tick.
+
+    No state depends on `previous_stop` / `stops_away`: on busy stops they changed
+    every few seconds and wrote most of the main sensor's states.
+    """
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_info([])
+    await advance(hass, freezer, 2)
+    first_update = hass.states.get(MAIN).attributes["last_update"]
+    changes = record(hass, MAIN, LEAVE, *PER_DEPARTURE)
+
+    for passed, stop in enumerate(("Kollárovo nám.", "Poštová", "Kozia")):  # 21:00:02 .. 21:00:11
+        payload = sample_tabs()
+        payload[1]["tab"][0].update(tuZidx=12, predoslaZidx=9 + passed, predoslaZstr=stop)
+        payload[0]["tab"][0].update(tuZidx=20, predoslaZidx=10 + passed, predoslaZstr="Patrónka")
+        listener.feed_tabs(payload)
+        await advance(hass, freezer, 3)
+    assert dict(changes) == {}
+    assert hass.states.get(FIRST).attributes["previous_stop"] is None
+
+    await advance(hass, freezer, 20)  # the tick at 21:00:30
+    first = hass.states.get(FIRST).attributes
+    assert (first["line"], first["previous_stop"], first["stops_away"]) == ("4", "Kozia", 1)
+    main = hass.states.get(MAIN).attributes
+    assert [dep["stops_away"] for dep in main["departures"][:2]] == [1, 8]
+    assert main["last_update"] == first_update
+
+
+BURST = (MAIN, NEXT, FIRST, LEAVE)
+
+
+async def start_burst_board(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    freezer: FrozenDateTimeFactory,
+) -> tuple[list[dict[str, Any]], dict[str, list[tuple[State, State]]]]:
+    """Set up Hodžovo nám. as captured just before an empty-platform burst.
+
+    Returns the burst (imhd.sk's `tabs` events as received) and the recorded changes.
+    """
+    hass.config_entries.async_update_entry(
+        config_entry, options={**config_entry.options, CONF_LEAVE_WINDOW: 5}
+    )
+    sequence = load_json("tabs_ba_empty_burst.json")
+    freezer.move_to(dt_util.utc_from_timestamp(sequence[0]["received_ms"] / 1000))
+    fake_feed.initial = sequence[0]["payload"]
+    await setup_entry(hass, config_entry)
+    fake_feed.instances[0].listener.feed_info([])
+    freezer.tick(timedelta(seconds=PUBLISH_DELAY))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert hass.states.get(MAIN).state == "4"
+    assert hass.states.get(FIRST).attributes["line"] == "N93"
+    assert hass.states.get(LEAVE).state == STATE_ON
+    return sequence[1:], record(hass, *BURST)
+
+
+async def replay(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, listener: Any, events: list[dict[str, Any]]
+) -> None:
+    """Deliver `tabs` events at the time they were received."""
+    for event in events:
+        freezer.move_to(dt_util.utc_from_timestamp(event["received_ms"] / 1000))
+        async_fire_time_changed(hass)
+        listener.feed_tabs(event["payload"])
+        await hass.async_block_till_done()
+
+
+async def test_empty_platform_burst_does_not_flicker(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """imhd.sk now and then empties every platform for 0.6 s: nothing changes.
+
+    Replays a capture of Hodžovo nám. (01:13:26): platforms A-D are sent empty
+    within 12 ms and full again 0.6 s later, with vehicles moved on. Every
+    platform used to be cleared in turn: a later bus became the next departure,
+    then nothing (unknown), and time to leave went off and on again.
+    """
+    burst, changes = await start_burst_board(hass, config_entry, fake_feed, freezer)
+    listener = fake_feed.instances[0].listener
+
+    await replay(hass, freezer, listener, burst)
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE + 2)
+
+    assert dict(changes) == {}
+
+
+async def test_platforms_that_stay_empty_clear_after_the_grace(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Service ending for good: the emptied platforms clear once the grace is over."""
+    burst, changes = await start_burst_board(hass, config_entry, fake_feed, freezer)
+    listener = fake_feed.instances[0].listener
+
+    await replay(hass, freezer, listener, burst[:4])  # A, B, C, D empty; no refill
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE - 1)
+    assert dict(changes) == {}
+    await advance(hass, freezer, PUBLISH_DELAY + 2)
+
+    # Cleared together in one write, without showing a later bus on the way.
+    assert [new.state for _old, new in changes[MAIN]] == [STATE_UNKNOWN]
+    assert states(changes[NEXT]) == [STATE_UNKNOWN]
+    assert states(changes[FIRST]) == [STATE_UNKNOWN]
+    assert states(changes[LEAVE]) == [STATE_OFF]
+    assert hass.states.get(MAIN).attributes["departures"] == []
+
+
+async def test_departed_rows_dropped_while_a_platform_is_emptied(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The countdown tick still drops departed rows of a platform kept for the grace."""
+    board = sample_tabs()
+    board[1]["tab"][0] = row("4", 88 / 60, "Dúbravka", delay=0, trip=3)  # 21:01:28
+    fake_feed.initial = board
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    await advance(hass, freezer, 117)
+
+    listener.feed_tabs([tabs(214, [])])  # B: the 4 (left 29 s ago) and the N33
+    await advance(hass, freezer, 3)  # the tick at 21:02:00
+    assert departure_lines(hass) == ["9", "X13", "N33"]
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE)
+    assert departure_lines(hass) == ["9", "X13"]
+
+
+async def test_emptied_platform_across_a_reconnect(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A disconnect during the grace leaves the decision to the next session.
+
+    The grace still runs from when the platform came empty: the next session
+    sending it empty again clears it once the grace is over.
+    """
+    await setup_entry(hass, config_entry)
+    feed = fake_feed.instances[0]
+    listener = feed.listener
+
+    listener.feed_tabs([tabs(214, [])])
+    await advance(hass, freezer, 1)
+    feed.disconnect()
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE + 2)
+    assert departure_lines(hass) == ["4", "9", "X13", "N33"]
+
+    listener.feed_connected()
+    listener.feed_tabs([sample_tabs()[0], tabs(214, [])])  # B is still empty
+    await advance(hass, freezer, PUBLISH_DELAY + 1)
+    assert departure_lines(hass) == ["9", "X13"]
+
+
+async def test_short_sessions_do_not_restart_the_grace(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """Sessions shorter than the grace (connect, data, drop) can't keep emptied rows.
+
+    Every new session sending the platform empty again used to restart the grace:
+    the departures imhd.sk withdrew stayed for as long as the connection flapped.
+    """
+    await setup_entry(hass, config_entry)
+    feed = fake_feed.instances[0]
+    feed.listener.feed_tabs([tabs(214, [])])  # 21:00:00, B: the 4 and the N33 are gone
+    await advance(hass, freezer, 3)
+    feed.disconnect()
+    await advance(hass, freezer, 1)
+    feed.listener.feed_connected()
+    feed.listener.feed_tabs([sample_tabs()[0], tabs(214, [])])  # B is still empty
+    await advance(hass, freezer, 1)  # the grace is over at 21:00:05
+    assert departure_lines(hass) == ["4", "9", "X13", "N33"]
+    await advance(hass, freezer, PUBLISH_DELAY)
+    assert departure_lines(hass) == ["9", "X13"]
+
+
+async def test_every_burst_gets_the_full_grace(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A refilled platform's grace starts afresh when it comes empty again."""
+    await setup_entry(hass, config_entry)
+    listener = fake_feed.instances[0].listener
+    listener.feed_tabs([tabs(214, [])])  # an empty burst, refilled at once
+    listener.feed_tabs([sample_tabs()[1]])
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE * 2)
+
+    listener.feed_tabs([tabs(214, [])])  # the next burst
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE - 1)
+    assert departure_lines(hass) == ["4", "9", "X13", "N33"]
+
+
+async def test_unload_during_the_grace(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    mock_http: AiohttpClientMocker,
+) -> None:
+    """Unloading while a platform is emptied leaves no timer (the test harness checks)."""
+    await setup_entry(hass, config_entry)
+    fake_feed.instances[0].listener.feed_tabs([tabs(214, [])])
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+@pytest.mark.usefixtures("mock_http")
+@pytest.mark.parametrize("disconnect", [False, True], ids=["tick", "disconnect"])
+async def test_platform_clear_moves_last_update(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    freezer: FrozenDateTimeFactory,
+    disconnect: bool,
+) -> None:
+    """A platform cleared after the grace moves `last_update`, whoever publishes it.
+
+    B comes empty at 21:00:24.5 and stays empty: it is cleared at 29.5, for a
+    coalesced publish at 30.5. The 30 s tick at 30.0 (or a disconnect) used to
+    publish it first, as an update that leaves `last_update` as it was.
+    """
+    await setup_entry(hass, config_entry)
+    feed = fake_feed.instances[0]
+    feed.listener.feed_info([])
+    await advance(hass, freezer, 24)
+    first_update = hass.states.get(MAIN).attributes["last_update"]
+    freezer.tick(timedelta(seconds=0.5))
+    feed.listener.feed_tabs([tabs(214, [])])  # B: the 4 and the N33 are gone for good
+    await advance(hass, freezer, EMPTY_PLATFORM_GRACE)  # 21:00:29.5
+    if disconnect:
+        feed.disconnect()
+    else:
+        freezer.move_to(NOW + timedelta(seconds=30))  # the tick
+        async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert departure_lines(hass) == ["9", "X13"]
+
+    await advance(hass, freezer, PUBLISH_DELAY + 1)
+    assert hass.states.get(MAIN).attributes["last_update"] != first_update
+
+
+@pytest.mark.usefixtures("mock_http")
+@pytest.mark.parametrize("disconnect", [False, True], ids=["tick", "disconnect"])
+async def test_platforms_emptied_together_clear_together(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    fake_feed: type[FakeFeed],
+    freezer: FrozenDateTimeFactory,
+    disconnect: bool,
+) -> None:
+    """Platforms sent empty a few ms apart clear in one go, whoever publishes it.
+
+    B comes empty at 21:00:24.995 and A at 25.005 (the capture had them 11 ms
+    apart), and neither is refilled. Their graces ended 10 ms apart: the 30 s
+    tick (or a disconnect, which also stopped A's grace) published B cleared and
+    A not, so A's 9 (21:04) became the next departure on the way to unknown.
+    """
+
+    async def at(seconds: float) -> None:
+        freezer.move_to(NOW + timedelta(seconds=seconds))
+        async_fire_time_changed_exact(hass)
+        await hass.async_block_till_done()
+
+    await setup_entry(hass, config_entry)
+    feed = fake_feed.instances[0]
+    feed.listener.feed_info([])
+    await at(2)
+    changes = record(hass, NEXT)
+    await at(24.995)
+    feed.listener.feed_tabs([tabs(214, [])])  # B: the 4 (21:01) and the N33
+    await at(25.005)
+    feed.listener.feed_tabs([tabs(213, [])])  # A: the 9 (21:04) and the X13
+    await at(29.996)  # B's grace is over
+    if disconnect:
+        feed.disconnect()
+    await at(30.0005)  # the tick
+    await advance(hass, freezer, PUBLISH_DELAY + 2)
+
+    assert states(changes[NEXT]) == [STATE_UNKNOWN]
+    assert departure_lines(hass) == []

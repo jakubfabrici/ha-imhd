@@ -121,10 +121,15 @@ Behaviour in detail:
   departure*, *Next line* and *Delay* sensors write about once a minute for the
   countdown, plus real changes such as a delay or another line. The main
   sensor and the *Departure N* sensors also carry each vehicle's position
-  (`previous_stop`, `stops_away`) and details, so they also write when a shown
-  vehicle passes a stop, every few seconds on busy stops: at *Hodžovo nám.* the
-  main sensor's state changed 3 times in 2 minutes, but it wrote 25 states
-  (recorder rows, without the unrecorded list).
+  (`previous_stop`, `stops_away`). It changes every few seconds on busy stops
+  and is updated with the countdown, every 30 seconds. In 10 minutes recorded
+  at *Hodžovo nám.* at night, the main sensor's state changed 8 times and it
+  wrote 41 states (recorder rows, without the unrecorded list).
+- **Empty moments are bridged.** Now and then imhd.sk sends every platform
+  empty and refills it within a second. A platform that comes empty keeps its
+  departures for 5 seconds and is cleared only if it stays empty, so the
+  entities don't jump to a later departure or to `unknown` and back, and
+  *Time to leave* doesn't turn off and on again.
 - **Countdowns keep running.** Every 30 seconds `minutes`, `leave_in` and the
   board `text` are recomputed from the expected departure time.
 - **Departed rows disappear.** Once the expected time is reached, a
@@ -549,7 +554,7 @@ friendly_name: Hodzovo Departures
 | `departure_count` | int | Number of items in `departures`. |
 | `info` | list of strings | Current imhd.sk info and service-alert texts. |
 | `connected` | bool | Whether the realtime feed is connected. |
-| `last_update` | ISO timestamp / null | When the departures shown by the entities or the info texts last changed. Shown are the first `max_departures` or `departure_sensors` departures, whichever is more. Identical repeated messages from imhd.sk, prediction shifts of a few seconds and changes to later departures don't move it. |
+| `last_update` | ISO timestamp / null | When the departures shown by the entities or the info texts last changed. Shown are the first `max_departures` or `departure_sensors` departures, whichever is more. Identical repeated messages from imhd.sk, prediction shifts of a few seconds, vehicles moving on (`previous_stop`, `stops_away`) and changes to later departures don't move it. |
 
 `departures`, `info`, `next_minutes` (a copy of the state) and `last_update`
 aren't saved in the recorder (history database), which keeps it small. They are
@@ -585,8 +590,8 @@ the second.
 | `text` | string | `4 min` | Countdown text as on the imhd.sk board, recomputed locally. See the table below. |
 | `trip_id` | int / null | `-18185607` | imhd.sk trip id. It is stable for one trip and can be negative (all Bratislava DPB trips are). Use it only as an identifier. |
 | `terminal` | string / null | `Červený most` | Terminal stop of the trip. Regional terminals include the town (`Senec, Žel. stanica`). |
-| `previous_stop` | string / null | `Kozia` | Stop the vehicle has passed last. `null` before the vehicle is on its way, and for timetable-only departures. |
-| `stops_away` | int / null | `1` | Number of stops between the vehicle and this stop. 1 means the vehicle is at, or just leaving, the previous stop. `null` when `previous_stop` is `null`. |
+| `previous_stop` | string / null | `Kozia` | Stop the vehicle has passed last. `null` before the vehicle is on its way, and for timetable-only departures. Updated with the countdown, every 30 seconds (or with the next real change). |
+| `stops_away` | int / null | `1` | Number of stops between the vehicle and this stop. 1 means the vehicle is at, or just leaving, the previous stop. `null` when `previous_stop` is `null`. Updated with the countdown, every 30 seconds (or with the next real change). |
 
 The `text` field:
 
@@ -764,6 +769,10 @@ Output: `Leave in 1 min for the 44 at 08:02.`
 Output: `4`
 
 **10. Where is the vehicle?**
+
+`previous_stop` and `stops_away` are updated with the countdown, every 30
+seconds (or with the next real change), so the sentence can lag the vehicle by
+up to 30 seconds. The `imhd.get_departures` action returns the current position.
 
 ```jinja
 {%- set d = (state_attr('sensor.hodzovo_departures', 'departures') or [])

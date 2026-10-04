@@ -389,7 +389,10 @@ Output: `44: #6127 (AC), 42: #6813 (AC), 47: #6101, 42: #6865 (AC)`
 ### Where is the vehicle?
 
 `previous_stop` is the stop the vehicle has passed last and `stops_away` how
-many stops it still has to go. Both are `null` until the vehicle is on its way.
+many stops it still has to go. Both are `null` until the vehicle is on its way,
+and updated with the countdown, every 30 seconds (or with the next real
+change), so the sentence can lag the vehicle by up to 30 seconds. The
+`imhd.get_departures` action returns the current position.
 
 ```jinja
 {%- set d = (state_attr('sensor.hodzovo_departures', 'departures') or [])

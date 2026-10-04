@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 import logging
 import math
 from typing import Any
@@ -54,6 +55,10 @@ PUBLISH_DELAY = 1.0
 # all for stops without any: wait this long after a (re)connect before taking
 # their absence as "no info". Until then the previous texts are kept.
 INFO_GRACE = 15.0
+# Now and then imhd.sk sends every platform empty and refills it within a second
+# (at worst on its next 3 s tick): an emptied platform keeps its departures
+# unless it stays empty this long.
+EMPTY_PLATFORM_GRACE = 5.0
 
 type ImhdConfigEntry = ConfigEntry[ImhdCoordinator]
 
@@ -133,19 +138,23 @@ class DepartureFilter:
         return result
 
 
-# Departure fields that change with time only (recomputed by the tick).
+# Departure fields that feed events don't publish (the tick does).
 # Countdowns change every tick, and the second-precision timestamps move with every
 # prediction tweak on busy boards; the minute-precision `time`/`scheduled_time`
-# fields still capture real changes.
-_VOLATILE_FIELDS = frozenset({"minutes", "leave_in", "text", "departure", "scheduled"})
+# fields still capture real changes. The vehicle's position changes at every stop
+# it passes, every few seconds on busy boards, and no entity state depends on it.
+_VOLATILE_FIELDS = frozenset(
+    {"minutes", "leave_in", "text", "departure", "scheduled", "previous_stop", "stops_away"}
+)
 
 
 def content_key(data: StopData, shown: int | None = None) -> tuple[Any, ...]:
     """Return what identifies the published content (minute precision, no countdowns).
 
-    Only the first `shown` departures count: no entity shows the others. They are
-    compared in a fixed order: their order follows the countdowns, which the tick
-    publishes (jitter across a minute would otherwise swap rows every few seconds).
+    Vehicle positions don't count (the tick publishes them). Only the first
+    `shown` departures count: no entity shows the others. They are compared in a
+    fixed order: their order follows the countdowns, which the tick publishes
+    (jitter across a minute would otherwise swap rows every few seconds).
     """
     departures = tuple(
         tuple(item for item in dep.as_dict().items() if item[0] not in _VOLATILE_FIELDS)
@@ -204,6 +213,11 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self._unsub_publish: CALLBACK_TYPE | None = None
         self._unsub_empty: CALLBACK_TYPE | None = None
         self._unsub_info: CALLBACK_TYPE | None = None
+        # Platforms imhd.sk sent empty, still shown until EMPTY_PLATFORM_GRACE after
+        # they first came empty (loop time, kept across reconnects).
+        self._emptied_since: dict[str, float] = {}
+        # Their empty elements from this session, with the timers ending the grace.
+        self._emptied: dict[str, tuple[Mapping[str, Any], CALLBACK_TYPE]] = {}
         self._content: tuple[Any, ...] | None = None
         self.data = StopData(stop=stop)
 
@@ -251,6 +265,7 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
             if unsub is not None:
                 unsub()
         self._unsub_tick = self._unsub_publish = self._unsub_empty = self._unsub_info = None
+        self._cancel_emptied()
         await self._async_stop_feed()
         await super().async_shutdown()
 
@@ -332,18 +347,20 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
 
         Feed events publish only when the shown departures or info texts changed
         (busy boards repeat identical data every few seconds and keep changing
-        rows no entity shows); they also move `last_update`. The 30 s tick and
-        connection changes always publish.
+        rows no entity shows); they also move `last_update`, as does a publish
+        that takes over a pending feed publish. The 30 s tick and connection
+        changes always publish.
         """
-        if self._unsub_publish is not None:
-            self._unsub_publish()
-            self._unsub_publish = None
+        pending, self._unsub_publish = self._unsub_publish, None
+        if pending is not None:
+            pending()
         data = self.build()
         content = content_key(data, self._shown)
-        if from_feed:
-            if content == self._content and not force:
-                return
-            self.last_update = data.last_update = dt_util.now()
+        if content != self._content or force:
+            if from_feed or pending is not None:
+                self.last_update = data.last_update = dt_util.now()
+        elif from_feed:
+            return
         self._content = content
         self.async_set_updated_data(data)
 
@@ -401,9 +418,11 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.connected = False
         if self._disconnected_at is None:
             self._disconnected_at = dt_util.utcnow()
-        # Keep the info texts (no off/on flicker) until the next session confirms them.
+        # Keep the info texts (no off/on flicker) and the departures of platforms
+        # just sent empty until the next session confirms them.
         self._awaiting_info = True
         self._cancel_info_timeout()
+        self._cancel_emptied()
         # Do not keep the entry setup waiting while the feed retries.
         self._first_result.set()
         self._publish()
@@ -421,7 +440,25 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
                 _LOGGER.debug("%s: ignoring malformed platform %.200r", self.name, element)
                 continue
             # The server only re-sends platforms that changed.
-            self._rows[str(platform)] = element
+            key = str(platform)
+            previous = self._rows.get(key)
+            if element["tab"] or previous is None or not previous["tab"]:
+                self._emptied_since.pop(key, None)
+                if (emptied := self._emptied.pop(key, None)) is not None:
+                    _element, unsub = emptied
+                    unsub()
+                self._rows[key] = element
+            elif key not in self._emptied:
+                # Maybe one of imhd.sk's empty bursts: keep the departures for now.
+                # A new session sending it empty again doesn't restart the grace.
+                now = self.hass.loop.time()
+                since = self._emptied_since.setdefault(key, now)
+                unsub = async_call_later(
+                    self.hass,
+                    max(0.0, since + EMPTY_PLATFORM_GRACE - now),
+                    partial(self._async_platform_emptied, key),
+                )
+                self._emptied[key] = (element, unsub)
             timestamp = element.get("timestamp")
             if (
                 isinstance(timestamp, (int, float))
@@ -435,6 +472,29 @@ class ImhdCoordinator(DataUpdateCoordinator[StopData]):
         self.has_data = True
         self._first_result.set()
         self._publish(from_feed=True, force=first)
+
+    @callback
+    def _async_platform_emptied(self, key: str, _now: datetime) -> None:
+        """A platform stayed empty: its departures are gone.
+
+        Platforms emptied together clear together, so no later bus is shown on the
+        way: those whose grace ends before the coalesced publish clear now too.
+        Their own timers, a few ms apart, would let a publish in between (the
+        tick, a disconnect) show some of them cleared and the others not.
+        """
+        due = self.hass.loop.time() + PUBLISH_DELAY
+        for other, (element, unsub) in list(self._emptied.items()):
+            if other == key or self._emptied_since[other] + EMPTY_PLATFORM_GRACE <= due:
+                unsub()
+                del self._emptied[other], self._emptied_since[other]
+                self._rows[other] = element
+        self._schedule_publish()
+
+    @callback
+    def _cancel_emptied(self) -> None:
+        for _element, unsub in self._emptied.values():
+            unsub()
+        self._emptied.clear()
 
     @callback
     def feed_vehicle(self, payload: Any) -> None:

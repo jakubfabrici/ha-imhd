@@ -22,9 +22,11 @@ First public release. Requires Home Assistant **2025.2.0** or newer.
   shows write nothing. Departures are listed by countdown like on the imhd.sk
   board, so `minutes` never decreases down the list. The Next departure, Next
   line and Delay sensors write about once a minute plus real changes (delay,
-  line); the main sensor and the Departure N sensors also write when a shown
-  vehicle passes a stop, every few seconds on busy stops. `departures`,
-  `info`, `next_minutes` and `last_update` aren't recorded.
+  line); the shown vehicles' positions (`previous_stop`, `stops_away`) are
+  updated with the countdown, every 30 seconds. The platforms imhd.sk now and
+  then sends empty for a moment keep their departures for 5 seconds, so the
+  entities don't flicker to a later departure or `unknown`.
+  `departures`, `info`, `next_minutes` and `last_update` aren't recorded.
 - Robust connection handling: reconnects with back-off (2 s to 60 s), a
   watchdog for boards that go silent, and quiet stops (night, small towns)
   shown as an empty board instead of an error. Entities become unavailable only
